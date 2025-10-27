@@ -1,0 +1,29 @@
+name: 🤓 Lint
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Run golangci-lint
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      
+      - name: Install Go
+        uses: actions/setup-go@v6
+        with: { go-version-file: go.mod }
+
+      - name: Check formatting using gofmt
+        run: gofmt -s -l -d .
+
+      - name: Run golangci-lint
+        uses: reviewdog/action-golangci-lint@v2
+        env:
+          REVIEWDOG_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          reporter: github-pr-review
+          golangci_lint_version: v2.4.0

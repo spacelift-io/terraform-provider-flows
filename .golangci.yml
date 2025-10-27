@@ -1,0 +1,105 @@
+version: "2"
+
+run:
+  tests: false
+
+output:
+  formats:
+    text:
+      path: stdout
+      print-linter-name: true
+      print-issued-lines: true
+  path-prefix: ""
+
+linters:
+  default: none
+  enable:
+    - depguard
+    - gocritic
+    - goprintffuncname
+    - gosec
+    - govet
+    - ineffassign
+    - nolintlint
+    - staticcheck
+    - unused
+  settings:
+    depguard:
+      rules:
+        ioutil:
+          deny:
+            - pkg: io/ioutil
+              desc: The io/ioutil package has been deprecated.
+    dupl:
+      threshold: 100
+    funlen:
+      lines: 100
+      statements: 50
+    goconst:
+      min-len: 2
+      min-occurrences: 2
+    gocritic:
+      disabled-checks:
+        - ifElseChain
+        - wrapperFunc
+        - hugeParam
+        - rangeValCopy
+        - appendCombine
+        - commentedOutCode
+        - sloppyReassign
+        - filepathJoin
+        - evalOrder
+        - equalFold
+        - returnAfterHttpError
+        - preferStringWriter
+        - sprintfQuotedString
+        - preferFprint
+      enabled-tags:
+        - diagnostic
+        - performance
+    nolintlint:
+      require-explanation: false
+      require-specific: false
+    staticcheck:
+      checks:
+        - all
+        - -SA1019
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+
+severity:
+  default: error
+  rules:
+    - linters:
+        - dupl
+      severity: info
+
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - goimports
+  settings:
+    gci:
+      sections:
+        - standard
+        - default
+        - prefix(github.com/spacelift-io/terraform-provider-flows)
+    goimports:
+      local-prefixes:
+        - github.com/spacelift-io/terraform-provider-flows
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$

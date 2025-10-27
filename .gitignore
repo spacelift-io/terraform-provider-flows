@@ -1,0 +1,29 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/terraform-provider-spacelift
+
+# Test binary, build with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# IDE-specific folders/files
+.idea/
+
+.env
+
+build
+key.*
+
+# Goreleaser output directory
+dist/
+
+.claude/settings.local.json
+
+test.env
+.envrc

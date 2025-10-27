@@ -1,0 +1,56 @@
+name: 🚀 Release beta
+
+# Beta releases are triggered manually to a specific provider from spacelift-io inputs
+on:
+  workflow_dispatch:
+    inputs:
+      providerType:
+        description: 'Provider type'
+        required: true
+      ref:
+        description: 'The branch, tag or SHA to use'
+        required: true
+
+jobs:
+  goreleaser:
+    name: Release beta
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validation for provider type
+        if: ${{ inputs.providerType == 'spacelift' }}
+        run: |
+          echo "It is not possible to release a provider with the name 'spacelift' to the Spacelift registry using manual workflow."
+          exit 1
+
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Unshallow
+        run: git fetch --prune --unshallow
+
+      - name: Update goreleaser project name
+        run: |
+          echo -e "project_name: terraform-provider-${{ inputs.providerType }}\n$(cat .goreleaser.yml)" > .goreleaser.yml
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with: { go-version-file: go.mod }
+
+      - name: Import GPG key
+        uses: crazy-max/ghaction-import-gpg@v6
+        id: import_gpg
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+          passphrase: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Run GoReleaser to create draft release
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: ~> v2
+          args: release --clean --snapshot
+        env:
+          GPG_FINGERPRINT: ${{ steps.import_gpg.outputs.fingerprint }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

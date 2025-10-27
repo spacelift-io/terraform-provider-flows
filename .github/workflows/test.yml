@@ -1,0 +1,25 @@
+name: 🧪 Test
+
+on: [push]
+
+jobs:
+  deployment:
+    name: Test the code
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install Go
+        uses: actions/setup-go@v6
+        with: { go-version-file: go.mod }
+
+      - name: Install Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.13.4"
+          terraform_wrapper: false
+
+      - name: Test with coverage
+        run: go test -parallel 40 -timeout 30m -coverprofile=coverage.txt -coverpkg=./... ./...
