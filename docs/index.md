@@ -16,4 +16,8 @@ description: |-
 
 ### Required
 
-- `endpoint` (String) The Flows endpoint to use. Generally https://useflows.eu or https://useflows.us.
+- `endpoint` (String) The Flows endpoint to use. Usually https://useflows.eu or https://useflows.us.
+
+### Optional
+
+- `token` (String, Sensitive) The authentication token for the Flows API. You may also set this using the FLOWS_TOKEN environment variable. You can get this token by running `flowctl auth token`.

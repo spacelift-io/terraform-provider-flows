@@ -22,6 +22,7 @@ type FlowsProvider struct {
 
 type FlowsProviderModel struct {
 	Endpoint types.String `tfsdk:"endpoint"`
+	Token    types.String `tfsdk:"token"`
 }
 
 type FlowsProviderConfiguredData struct {
@@ -38,8 +39,13 @@ func (p *FlowsProvider) Schema(ctx context.Context, req provider.SchemaRequest, 
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"endpoint": schema.StringAttribute{
-				MarkdownDescription: "The Flows endpoint to use. Generally https://useflows.eu or https://useflows.us.",
+				MarkdownDescription: "The Flows endpoint to use. Usually https://useflows.eu or https://useflows.us.",
 				Required:            true,
+			},
+			"token": schema.StringAttribute{
+				MarkdownDescription: "The authentication token for the Flows API. You may also set this using the FLOWS_TOKEN environment variable. You can get this token by running `flowctl auth token`.",
+				Sensitive:           true,
+				Optional:            true,
 			},
 		},
 	}
@@ -54,10 +60,14 @@ func (p *FlowsProvider) Configure(ctx context.Context, req provider.ConfigureReq
 		return
 	}
 
-	token, ok := os.LookupEnv("FLOWS_TOKEN")
-	if !ok {
-		resp.Diagnostics.AddError("Missing FLOWS_TOKEN environment variable.", "The FLOWS_TOKEN environment variable must be set to authenticate requests. Get it by running `flowctl auth token`.")
-		return
+	token := data.Token.ValueString()
+	if token == "" {
+		var ok bool
+		token, ok = os.LookupEnv("FLOWS_TOKEN")
+		if !ok {
+			resp.Diagnostics.AddError("Missing FLOWS_TOKEN environment variable.", "The FLOWS_TOKEN environment variable must be set to authenticate requests. Get it by running `flowctl auth token`.")
+			return
+		}
 	}
 
 	resp.ResourceData = &FlowsProviderConfiguredData{

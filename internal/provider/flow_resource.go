@@ -41,28 +41,37 @@ func (r *FlowResource) Metadata(ctx context.Context, req resource.MetadataReques
 
 func (r *FlowResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		MarkdownDescription: `Creates and manages a Flow based on the provided definition in YAML format.
+
+The easiest way to get started is to select a couple blocks through the Flows UI and then copy (via ctrl+c / cmd+c) them. You can then paste into a yaml file and use that as the definition.`,
 		Attributes: map[string]schema.Attribute{
 			"project_id": schema.StringAttribute{
-				Required: true,
+				Description: "ID of the project to create the flow in.",
+				Required:    true,
 			},
 			"id": schema.StringAttribute{
-				Computed: true,
+				Description: "ID of the flow.",
+				Computed:    true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 				},
 			},
 			"name": schema.StringAttribute{
-				Required: true,
+				Description: "Name of the flow.",
+				Required:    true,
 			},
 			"definition": schema.StringAttribute{
-				Required: true,
+				Description: "YAML definition of the flow, easiest to obtain by copying blocks from the Flows UI.",
+				Required:    true,
 			},
 			"app_installation_mapping": schema.MapAttribute{
+				Description: "Mapping of app keys to app installation IDs to use when applying the flow definition. Can be used to specify installation ids when they are not provided in the yaml, or to override them.",
 				ElementType: types.StringType,
 				Optional:    true,
 			},
 			"blocks": schema.MapAttribute{
-				Computed: true,
+				Description: "Map of blocks in the flow, keyed by their names. Each block exposes its ID.",
+				Computed:    true,
 				ElementType: types.ObjectType{
 					AttrTypes: map[string]attr.Type{
 						"id": types.StringType,

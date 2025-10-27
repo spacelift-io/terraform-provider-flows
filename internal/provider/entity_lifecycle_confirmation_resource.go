@@ -37,10 +37,12 @@ func (r *EntityLifecycleConfirmationResource) Metadata(ctx context.Context, req 
 
 func (r *EntityLifecycleConfirmationResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Confirms the lifecycle of an entity and waits for it to reach a settled state.",
+		MarkdownDescription: `Confirms the lifecycle of an entity and waits for it to reach a settled state.
+
+This is useful for creating stateful blocks and entities using the flow resource, and then confirming them using entity_lifecycle_confirmation.`,
 		Attributes: map[string]schema.Attribute{
 			"entity_id": schema.StringAttribute{
-				MarkdownDescription: "The UUID of the entity to confirm lifecycle for",
+				MarkdownDescription: "The UUID of the entity to confirm the lifecycle for",
 				Required:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
