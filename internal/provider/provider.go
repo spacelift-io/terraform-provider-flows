@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"net/url"
 	"os"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -39,7 +40,7 @@ func (p *FlowsProvider) Schema(ctx context.Context, req provider.SchemaRequest, 
 	resp.Schema = schema.Schema{
 		Attributes: map[string]schema.Attribute{
 			"endpoint": schema.StringAttribute{
-				MarkdownDescription: "The Flows endpoint to use. Usually https://useflows.eu or https://useflows.us.",
+				MarkdownDescription: "The Flows endpoint to use. Usually useflows.eu or useflows.us.",
 				Required:            true,
 			},
 			"token": schema.StringAttribute{
@@ -70,16 +71,25 @@ func (p *FlowsProvider) Configure(ctx context.Context, req provider.ConfigureReq
 		}
 	}
 
+	endpointParsed, err := url.Parse(data.Endpoint.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Invalid endpoint URL.", "The provided endpoint URL is invalid: "+err.Error())
+		return
+	}
+	if endpointParsed.Scheme == "" {
+		endpointParsed.Scheme = "https"
+	}
+
 	resp.ResourceData = &FlowsProviderConfiguredData{
 		Token:    token,
-		Endpoint: data.Endpoint.ValueString(),
+		Endpoint: endpointParsed.String(),
 	}
 }
 
 func (p *FlowsProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewFlowResource,
-		NewEntityLifecycleConfirmationResource,
+		NewEntityConfirmationResource,
 	}
 }
 

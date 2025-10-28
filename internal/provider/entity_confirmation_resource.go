@@ -14,35 +14,35 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &EntityLifecycleConfirmationResource{}
+var _ resource.Resource = &EntityConfirmationResource{}
 
-func NewEntityLifecycleConfirmationResource() resource.Resource {
-	return &EntityLifecycleConfirmationResource{}
+func NewEntityConfirmationResource() resource.Resource {
+	return &EntityConfirmationResource{}
 }
 
-// EntityLifecycleConfirmationResource defines the resource implementation.
-type EntityLifecycleConfirmationResource struct {
+// EntityConfirmationResource defines the resource implementation.
+type EntityConfirmationResource struct {
 	providerData *FlowsProviderConfiguredData
 }
 
-// EntityLifecycleConfirmationResourceModel describes the resource data model.
-type EntityLifecycleConfirmationResourceModel struct {
+// EntityConfirmationResourceModel describes the resource data model.
+type EntityConfirmationResourceModel struct {
 	EntityId types.String `tfsdk:"entity_id"`
 	Status   types.String `tfsdk:"status"`
 }
 
-func (r *EntityLifecycleConfirmationResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_entity_lifecycle_confirmation"
+func (r *EntityConfirmationResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+	resp.TypeName = req.ProviderTypeName + "_entity_confirmation"
 }
 
-func (r *EntityLifecycleConfirmationResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (r *EntityConfirmationResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: `Confirms the lifecycle of an entity and waits for it to reach a settled state.
+		MarkdownDescription: `Confirms an entity and waits for it to reach a settled state.
 
-This is useful for creating stateful blocks and entities using the flow resource, and then confirming them using entity_lifecycle_confirmation.`,
+This is useful for creating stateful blocks and entities using the flow resource, and then confirming them using entity_confirmation.`,
 		Attributes: map[string]schema.Attribute{
 			"entity_id": schema.StringAttribute{
-				MarkdownDescription: "The UUID of the entity to confirm the lifecycle for",
+				MarkdownDescription: "The UUID of the entity to confirm",
 				Required:            true,
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
@@ -56,7 +56,7 @@ This is useful for creating stateful blocks and entities using the flow resource
 	}
 }
 
-func (r *EntityLifecycleConfirmationResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (r *EntityConfirmationResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	// Prevent panic if the provider has not been configured.
 	if req.ProviderData == nil {
 		return
@@ -77,8 +77,8 @@ type GetEntityLifecycleStatusResponse struct {
 	Status string `json:"status"`
 }
 
-func (r *EntityLifecycleConfirmationResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var data EntityLifecycleConfirmationResourceModel
+func (r *EntityConfirmationResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+	var data EntityConfirmationResourceModel
 
 	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
@@ -93,13 +93,13 @@ func (r *EntityLifecycleConfirmationResource) Create(ctx context.Context, req re
 		EntityID: entityID,
 	})
 	if err != nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to get entity lifecycle status, got error: %s", err))
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to get entity status, got error: %s", err))
 		return
 	}
 
 	// Only confirm if the entity is in draft state
 	if statusResp.Status == "draft" {
-		tflog.Info(ctx, "Confirming entity lifecycle", map[string]interface{}{
+		tflog.Info(ctx, "Confirming entity", map[string]interface{}{
 			"entity_id": entityID,
 		})
 
@@ -107,11 +107,11 @@ func (r *EntityLifecycleConfirmationResource) Create(ctx context.Context, req re
 			ID: entityID,
 		})
 		if err != nil {
-			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to confirm entity lifecycle, got error: %s", err))
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to confirm entity, got error: %s", err))
 			return
 		}
 	} else {
-		tflog.Info(ctx, "Entity not in draft state, skipping confirmation", map[string]interface{}{
+		tflog.Info(ctx, "Entity not a draft, skipping confirmation", map[string]interface{}{
 			"entity_id": entityID,
 			"status":    statusResp.Status,
 		})
@@ -127,11 +127,11 @@ func (r *EntityLifecycleConfirmationResource) Create(ctx context.Context, req re
 			EntityID: entityID,
 		})
 		if err != nil {
-			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to get entity lifecycle status, got error: %s", err))
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to get entity status, got error: %s", err))
 			return
 		}
 
-		tflog.Debug(ctx, "Entity lifecycle status", map[string]interface{}{
+		tflog.Debug(ctx, "Entity status", map[string]interface{}{
 			"entity_id": entityID,
 			"status":    statusResp.Status,
 			"attempt":   i + 1,
@@ -149,7 +149,7 @@ func (r *EntityLifecycleConfirmationResource) Create(ctx context.Context, req re
 		case "failed", "drifted", "draining_failed", "draining", "drained":
 			// Terminal failure states
 			resp.Diagnostics.AddError(
-				"Entity Lifecycle Confirmation Failed",
+				"Entity Confirmation Failed",
 				fmt.Sprintf("Entity %q reached status '%s' instead of 'ready'", entityID, finalStatus),
 			)
 			return
@@ -169,13 +169,13 @@ func (r *EntityLifecycleConfirmationResource) Create(ctx context.Context, req re
 
 	// Timeout reached
 	resp.Diagnostics.AddError(
-		"Entity Lifecycle Confirmation Timeout",
+		"Entity Confirmation Timeout",
 		fmt.Sprintf("Entity %s did not reach a settled state within 5 minutes, last status was '%s'", entityID, finalStatus),
 	)
 }
 
-func (r *EntityLifecycleConfirmationResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var data EntityLifecycleConfirmationResourceModel
+func (r *EntityConfirmationResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+	var data EntityConfirmationResourceModel
 
 	// Read Terraform prior state data into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -197,15 +197,15 @@ func (r *EntityLifecycleConfirmationResource) Read(ctx context.Context, req reso
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (r *EntityLifecycleConfirmationResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (r *EntityConfirmationResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	// This resource doesn't support updates
 	resp.Diagnostics.AddError(
 		"Update Not Supported",
-		"The entity_lifecycle_confirmation resource does not support updates. Please destroy and recreate.",
+		"The entity_confirmation resource does not support updates. Please destroy and recreate.",
 	)
 }
 
-func (r *EntityLifecycleConfirmationResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *EntityConfirmationResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	// Nothing to do on delete - this resource is purely for confirmation
 	// The entity itself is managed elsewhere
 }

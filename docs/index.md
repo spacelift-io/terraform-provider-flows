@@ -16,7 +16,7 @@ description: |-
 
 ### Required
 
-- `endpoint` (String) The Flows endpoint to use. Usually https://useflows.eu or https://useflows.us.
+- `endpoint` (String) The Flows endpoint to use. Usually useflows.eu or useflows.us.
 
 ### Optional
 
