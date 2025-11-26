@@ -20,7 +20,23 @@ provider "flows" {
 }
 ```
 
-Set the `FLOWS_TOKEN` environment variable for authentication:
+## Authentication
+
+You will have to set the `FLOWS_TOKEN` environment variable for authentication. You can obtain it in two ways.
+
+### API Key
+
+Go to your avatar in the left upper corner => Settings => Authorizations => API Keys and create a new personal API key. Make sure to give it editor access to any relevant projects, along with `api` and `flows:edit` capabilities.
+
+You can then use it for authentication:
+
+```shell
+export FLOWS_TOKEN=sfapi_...
+```
+
+### flowctl
+
+For local development, you can also get a token from an authenticated `flowctl` CLI.
 
 ```shell
 export FLOWS_TOKEN=$(flowctl auth token)
