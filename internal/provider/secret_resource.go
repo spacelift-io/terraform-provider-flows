@@ -121,7 +121,7 @@ func (r *SecretResource) Create(ctx context.Context, req resource.CreateRequest,
 }
 
 type UpdateSecretRequest struct {
-	ProjectId string `json:"projectId"`
+	ProjectID string `json:"projectId"`
 	Key       string `json:"key"`
 	Value     string `json:"value"`
 }
@@ -139,7 +139,7 @@ func (r *SecretResource) Update(ctx context.Context, req resource.UpdateRequest,
 	}
 
 	_, err := CallFlowsAPI[UpdateSecretRequest, struct{}](*r.providerData, "/provider/organization/update_secret", UpdateSecretRequest{
-		ProjectId: config.ProjectID.ValueString(),
+		ProjectID: config.ProjectID.ValueString(),
 		Key:       config.Key.ValueString(),
 		Value:     config.Value.ValueString(),
 	})
@@ -155,7 +155,7 @@ func (r *SecretResource) Update(ctx context.Context, req resource.UpdateRequest,
 }
 
 type ReadSecretRequest struct {
-	ProjectId string `json:"projectId"`
+	ProjectID string `json:"projectId"`
 	Key       string `json:"key"`
 }
 
@@ -177,7 +177,7 @@ func (r *SecretResource) Read(ctx context.Context, req resource.ReadRequest, res
 	}
 
 	_, err := CallFlowsAPI[ReadSecretRequest, ReadSecretResponse](*r.providerData, "/provider/organization/read_secret", ReadSecretRequest{
-		ProjectId: state.ProjectID.ValueString(),
+		ProjectID: state.ProjectID.ValueString(),
 		Key:       state.Key.ValueString(),
 	})
 	if err != nil {
@@ -194,7 +194,7 @@ func (r *SecretResource) Read(ctx context.Context, req resource.ReadRequest, res
 }
 
 type DeleteSecretRequest struct {
-	ProjectId string `json:"projectId"`
+	ProjectID string `json:"projectId"`
 	Key       string `json:"key"`
 }
 
@@ -208,7 +208,7 @@ func (r *SecretResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	}
 
 	_, err := CallFlowsAPI[DeleteSecretRequest, struct{}](*r.providerData, "/provider/organization/delete_secret", DeleteSecretRequest{
-		ProjectId: state.ProjectID.ValueString(),
+		ProjectID: state.ProjectID.ValueString(),
 		Key:       state.Key.ValueString(),
 	})
 	if err != nil {
