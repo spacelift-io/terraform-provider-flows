@@ -3,14 +3,17 @@ package provider
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -178,12 +181,7 @@ type UpdateAppInstallationConfigResponse struct {
 }
 
 type ConfirmAppInstallationRequest struct {
-	ID   string `json:"id"`
-	Wait bool   `json:"wait"`
-}
-
-type ConfirmAppInstallationResponse struct {
-	Status string `json:"status"`
+	ID string `json:"id"`
 }
 
 func (r *AppInstallationResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -235,23 +233,12 @@ func (r *AppInstallationResource) Create(ctx context.Context, req resource.Creat
 	}
 
 	if canConfirm && data.ShouldConfirm() {
-		wait := data.WaitForConfirm.ValueBool() || data.WaitForConfirm.IsNull() || data.WaitForConfirm.IsUnknown()
-
-		confirmResp, err := CallFlowsAPI[ConfirmAppInstallationRequest, ConfirmAppInstallationResponse](*r.providerData, confirmInstallationPath, ConfirmAppInstallationRequest{
-			ID:   createAppInstallationRes.ID,
-			Wait: wait,
-		})
-		if err != nil {
-			resp.Diagnostics.AddError("Client Error", "Unable to confirm app installation config, got error: "+err.Error())
-			return
-		}
-
-		if wait && confirmResp.Status != "ready" {
-			resp.Diagnostics.AddError(
-				"App Installation Confirmation Failed",
-				fmt.Sprintf("App installation %q reached status '%s' instead of 'ready'", data.ID, confirmResp.Status),
-			)
-		}
+		r.Confirm(
+			ctx,
+			createAppInstallationRes.ID,
+			data.WaitForConfirm.ValueBool() || data.WaitForConfirm.IsNull() || data.WaitForConfirm.IsUnknown(),
+			&resp.Diagnostics,
+		)
 	}
 }
 
@@ -261,6 +248,7 @@ type GetAppInstallationRequest struct {
 
 type GetAppInstallationResponse struct {
 	Name          string                        `json:"name"`
+	Status        string                        `json:"status"`
 	AppVersionID  string                        `json:"appVersionId"`
 	StyleOverride *AppInstallationStyleOverride `json:"styleOverride"`
 	ConfigFields  map[string]string             `json:"configFields"`
@@ -433,23 +421,12 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 
 	if canConfirm && config.ShouldConfirm() {
-		wait := config.WaitForConfirm.ValueBool() || config.WaitForConfirm.IsNull() || config.WaitForConfirm.IsUnknown()
-
-		confirmResp, err := CallFlowsAPI[ConfirmAppInstallationRequest, ConfirmAppInstallationResponse](*r.providerData, confirmInstallationPath, ConfirmAppInstallationRequest{
-			ID:   data.ID.ValueString(),
-			Wait: wait,
-		})
-		if err != nil {
-			resp.Diagnostics.AddError("Client Error", "Unable to confirm app installation config, got error: "+err.Error())
-			return
-		}
-
-		if wait && confirmResp.Status != "ready" {
-			resp.Diagnostics.AddError(
-				"App Installation Confirmation Failed",
-				fmt.Sprintf("App installation %q reached status '%s' instead of 'ready'", data.ID, confirmResp.Status),
-			)
-		}
+		r.Confirm(
+			ctx,
+			data.ID.String(),
+			config.WaitForConfirm.ValueBool() || config.WaitForConfirm.IsNull() || config.WaitForConfirm.IsUnknown(),
+			&resp.Diagnostics,
+		)
 	}
 }
 
@@ -479,6 +456,85 @@ func (r *AppInstallationResource) Delete(ctx context.Context, req resource.Delet
 
 func (r *AppInstallationResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+}
+
+func (r *AppInstallationResource) Confirm(
+	ctx context.Context,
+	id string,
+	wait bool,
+	dg *diag.Diagnostics,
+) {
+	_, err := CallFlowsAPI[ConfirmAppInstallationRequest, struct{}](*r.providerData, confirmInstallationPath, ConfirmAppInstallationRequest{
+		ID: id,
+	})
+	if err != nil {
+		dg.AddError("Client Error", fmt.Sprintf("Unable to confirm app installation %q, got error: %s", id, err.Error()))
+		return
+	}
+
+	if !wait {
+		return
+	}
+
+	// Poll for the status to settle
+	maxRetries := 60 // 5 minutes with 5-second intervals
+
+	retryInterval := 5 * time.Second
+	var status string
+
+	for i := range maxRetries {
+		appInstallation, err := CallFlowsAPI[GetAppInstallationRequest, GetAppInstallationResponse](
+			*r.providerData,
+			getInstallationPath,
+			GetAppInstallationRequest{
+				ID: id,
+			},
+		)
+		if err != nil {
+			dg.AddError("Client Error", fmt.Sprintf("Unable to read app installation, got error: %s", err.Error()))
+			return
+		}
+
+		tflog.Debug(ctx, "App Installation status", map[string]any{
+			"app_installation_id": id,
+			"status":              appInstallation.Status,
+			"attempt":             i + 1,
+		})
+
+		status = appInstallation.Status
+
+		switch status {
+		case "ready":
+			// Success case
+			return
+		case "failed", "drifted", "draining_failed", "draining", "drained":
+			// Terminal failure states
+			dg.AddError(
+				"App Installation Failed",
+				fmt.Sprintf("App Installation %q reached status '%s' instead of 'ready'", id, status),
+			)
+
+			return
+		case "draft", "in_progress":
+			// Transitional states, continue polling
+			time.Sleep(retryInterval)
+			continue
+		default:
+			// Unknown status
+			dg.AddError(
+				"Unknown App Installation Status",
+				fmt.Sprintf("App Installation %s has unknown status '%s'", id, status),
+			)
+
+			return
+		}
+	}
+
+	// Timeout reached
+	dg.AddError(
+		"App Installation Confirmation Timeout",
+		fmt.Sprintf("App Installation %s did not reach a settled state within 5 minutes, last status was '%s'", id, status),
+	)
 }
 
 type confirmWaitValidator struct{}
