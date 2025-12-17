@@ -3,12 +3,12 @@
 page_title: "flows_app_installation Resource - flows"
 subcategory: ""
 description: |-
-  Creates and manages an app installation based on the provided definition in YAML format.
+  Creates and manages an app installation based on the provided configuration.
 ---
 
 # flows_app_installation (Resource)
 
-Creates and manages an app installation based on the provided definition in YAML format.
+Creates and manages an app installation based on the provided configuration.
 
 
 
@@ -24,10 +24,10 @@ Creates and manages an app installation based on the provided definition in YAML
 ### Optional
 
 - `config_fields` (Map of String) Configuration settings for the app installation.
-- `confirm` (Boolean) Whether to automatically confirm the app installation after creation.
+- `confirm` (Boolean) Whether to automatically confirm the app installation in case it is in a draft mode.
 - `custom_registry` (Boolean) Specifies whether the app is from a custom registry.
 - `style_override` (Attributes) (see [below for nested schema](#nestedatt--style_override))
-- `wait_for_confirm` (Boolean) Whether to wait for the app installation to be fully confirmed before completing the resource creation.
+- `wait_for_confirm` (Boolean) Whether to wait for the app installation to be confirmed when confirm is true.
 
 ### Read-Only
 

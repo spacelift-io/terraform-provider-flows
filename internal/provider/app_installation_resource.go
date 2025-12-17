@@ -66,7 +66,7 @@ func (r *AppInstallationResource) ConfigValidators(ctx context.Context) []resour
 
 func (r *AppInstallationResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: `Creates and manages an app installation based on the provided definition in YAML format.`,
+		MarkdownDescription: `Creates and manages an app installation based on the provided configuration.`,
 		Attributes: map[string]schema.Attribute{
 			"project_id": schema.StringAttribute{
 				Description: "ID of the project to create the app installation in.",
@@ -97,11 +97,11 @@ func (r *AppInstallationResource) Schema(ctx context.Context, req resource.Schem
 				Optional:    true,
 			},
 			"confirm": schema.BoolAttribute{
-				Description: "Whether to automatically confirm the app installation after creation.",
+				Description: "Whether to automatically confirm the app installation in case it is in a draft mode.",
 				Optional:    true,
 			},
 			"wait_for_confirm": schema.BoolAttribute{
-				Description: "Whether to wait for the app installation to be fully confirmed before completing the resource creation.",
+				Description: "Whether to wait for the app installation to be confirmed when confirm is true.",
 				Optional:    true,
 			},
 			"style_override": schema.SingleNestedAttribute{
