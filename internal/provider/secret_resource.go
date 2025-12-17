@@ -31,6 +31,7 @@ type SecretResourceModel struct {
 	ProjectID types.String `tfsdk:"project_id"`
 	Key       types.String `tfsdk:"key"`
 	Value     types.String `tfsdk:"value"`
+	UpdatedAt types.String `tfsdk:"updated_at"`
 }
 
 func (r *SecretResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -62,10 +63,15 @@ func (r *SecretResource) Schema(ctx context.Context, req resource.SchemaRequest,
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
+			"updated_at": schema.StringAttribute{
+				Description: "Timestamp when the secret was last updated.",
+				Computed:    true,
+			},
 			"value": schema.StringAttribute{
 				Description: "Secret value.",
 				Required:    true,
 				Sensitive:   true,
+				WriteOnly:   true,
 			},
 		},
 	}
@@ -87,12 +93,10 @@ type CreateSecretRequest struct {
 }
 
 type CreateSecretResponse struct {
-	Data struct {
-		Secret struct {
-			Key       string    `json:"key"`
-			UpdatedAt time.Time `json:"updatedAt"`
-		} `json:"secret"`
-	} `json:"data"`
+	Secret struct {
+		Key       string    `json:"key"`
+		UpdatedAt time.Time `json:"updatedAt"`
+	} `json:"secret"`
 }
 
 func (r *SecretResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
@@ -104,7 +108,7 @@ func (r *SecretResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	_, err := CallFlowsAPI[CreateSecretRequest, CreateSecretResponse](*r.providerData, "/provider/organization/create_secret", CreateSecretRequest{
+	createResp, err := CallFlowsAPI[CreateSecretRequest, CreateSecretResponse](*r.providerData, "/provider/organization/create_secret", CreateSecretRequest{
 		ProjectID: config.ProjectID.ValueString(),
 		Key:       config.Key.ValueString(),
 		Value:     config.Value.ValueString(),
@@ -114,10 +118,15 @@ func (r *SecretResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	// Set the ID as a composite of project_id and key
-	config.ID = types.StringValue(fmt.Sprintf("%s/%s", config.ProjectID.ValueString(), config.Key.ValueString()))
+	// Save secret state
+	state := &SecretResourceModel{
+		ID:        types.StringValue(fmt.Sprintf("%s/%s", config.ProjectID.ValueString(), createResp.Secret.Key)),
+		ProjectID: config.ProjectID,
+		Key:       types.StringValue(createResp.Secret.Key),
+		UpdatedAt: types.StringValue(createResp.Secret.UpdatedAt.Format(time.RFC3339)),
+	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &config)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, state)...)
 }
 
 type UpdateSecretRequest struct {
@@ -126,32 +135,39 @@ type UpdateSecretRequest struct {
 	Value     string `json:"value"`
 }
 
+type UpdateSecretResponse struct {
+	Secret struct {
+		Key       string    `json:"key"`
+		UpdatedAt time.Time `json:"updatedAt"`
+	} `json:"secret"`
+}
+
 func (r *SecretResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var state SecretResourceModel
-	// Read Terraform prior state into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
-
-	var config SecretResourceModel
-	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	_, err := CallFlowsAPI[UpdateSecretRequest, struct{}](*r.providerData, "/provider/organization/update_secret", UpdateSecretRequest{
-		ProjectID: config.ProjectID.ValueString(),
-		Key:       config.Key.ValueString(),
-		Value:     config.Value.ValueString(),
+	var value types.String
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("value"), &value)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	updateResp, err := CallFlowsAPI[UpdateSecretRequest, UpdateSecretResponse](*r.providerData, "/provider/organization/update_secret", UpdateSecretRequest{
+		ProjectID: state.ProjectID.ValueString(),
+		Key:       state.Key.ValueString(),
+		Value:     value.ValueString(),
 	})
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", "Unable to update secret, got error: "+err.Error())
 		return
 	}
 
-	// Update the ID in case the key or project_id changed
-	config.ID = types.StringValue(fmt.Sprintf("%s/%s", config.ProjectID.ValueString(), config.Key.ValueString()))
+	state.UpdatedAt = types.StringValue(updateResp.Secret.UpdatedAt.Format(time.RFC3339))
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &config)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
 type ReadSecretRequest struct {
@@ -160,13 +176,10 @@ type ReadSecretRequest struct {
 }
 
 type ReadSecretResponse struct {
-	Data struct {
-		Secret struct {
-			Key       string    `json:"key"`
-			UpdatedAt time.Time `json:"updatedAt"`
-		} `json:"secret"`
-	} `json:"data"`
-	Error string `json:"error"`
+	Secret struct {
+		Key       string    `json:"key"`
+		UpdatedAt time.Time `json:"updatedAt"`
+	} `json:"secret"`
 }
 
 func (r *SecretResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -176,7 +189,7 @@ func (r *SecretResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
-	_, err := CallFlowsAPI[ReadSecretRequest, ReadSecretResponse](*r.providerData, "/provider/organization/read_secret", ReadSecretRequest{
+	readResp, err := CallFlowsAPI[ReadSecretRequest, ReadSecretResponse](*r.providerData, "/provider/organization/read_secret", ReadSecretRequest{
 		ProjectID: state.ProjectID.ValueString(),
 		Key:       state.Key.ValueString(),
 	})
@@ -190,6 +203,8 @@ func (r *SecretResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
+	state.UpdatedAt = types.StringValue(readResp.Secret.UpdatedAt.Format(time.RFC3339))
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -201,7 +216,6 @@ type DeleteSecretRequest struct {
 func (r *SecretResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var state SecretResourceModel
 
-	// Read Terraform prior  state into the model
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return

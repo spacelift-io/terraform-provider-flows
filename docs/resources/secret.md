@@ -25,13 +25,16 @@ resource "flows_secret" "example" {
 
 ### Required
 
+> **NOTE**: [Write-only arguments](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments) are supported in Terraform 1.11 and later.
+
 - `key` (String) Secret key.
 - `project_id` (String) `ID of the project to create the secret in.
-- `value` (String, Sensitive) Secret value.
+- `value` (String, Sensitive, [Write-only](https://developer.hashicorp.com/terraform/language/resources/ephemeral#write-only-arguments)) Secret value.
 
 ### Read-Only
 
 - `id` (String) ID of the secret (composite of project_id and key).
+- `updated_at` (String) Timestamp when the secret was last updated.
 
 ## Import
 
