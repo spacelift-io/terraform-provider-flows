@@ -278,9 +278,9 @@ func (r *AppInstallationResource) Read(ctx context.Context, req resource.ReadReq
 			"color":    types.StringType,
 		})
 	} else {
-		iconUrl := types.StringNull()
+		iconURL := types.StringNull()
 		if appInstallation.StyleOverride.IconURL != "" {
-			iconUrl = types.StringValue(appInstallation.StyleOverride.IconURL)
+			iconURL = types.StringValue(appInstallation.StyleOverride.IconURL)
 		}
 
 		color := types.StringNull()
@@ -294,7 +294,7 @@ func (r *AppInstallationResource) Read(ctx context.Context, req resource.ReadReq
 				"color":    types.StringType,
 			},
 			map[string]attr.Value{
-				"icon_url": iconUrl,
+				"icon_url": iconURL,
 				"color":    color,
 			},
 		)
