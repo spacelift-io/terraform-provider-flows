@@ -50,6 +50,10 @@ type AppInstallationResourceModel struct {
 	StyleOverride  types.Object `tfsdk:"style_override"`
 }
 
+func (m *AppInstallationResourceModel) ShouldConfirm() bool {
+	return m.Confirm.IsNull() || m.Confirm.IsUnknown() || m.Confirm.ValueBool()
+}
+
 func (r *AppInstallationResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_app_installation"
 }
@@ -203,8 +207,10 @@ func (r *AppInstallationResource) Create(ctx context.Context, req resource.Creat
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 
+	canConfirm := createAppInstallationRes.Draft
+
 	if !data.ConfigFields.IsNull() && !data.ConfigFields.IsUnknown() {
-		_, err = CallFlowsAPI[UpdateAppInstallationConfigRequest, struct{}](*r.providerData, updateInstallationConfigPath, UpdateAppInstallationConfigRequest{
+		appInstallation, err := CallFlowsAPI[UpdateAppInstallationConfigRequest, UpdateAppInstallationConfigResponse](*r.providerData, updateInstallationConfigPath, UpdateAppInstallationConfigRequest{
 			ID: createAppInstallationRes.ID,
 			ConfigFields: func() map[string]string {
 				m := make(map[string]string)
@@ -220,9 +226,11 @@ func (r *AppInstallationResource) Create(ctx context.Context, req resource.Creat
 			resp.Diagnostics.AddError("Client Error", "Unable to update app installation config, got error: "+err.Error())
 			return
 		}
+
+		canConfirm = appInstallation.Draft
 	}
 
-	if createAppInstallationRes.Draft && (data.Confirm.ValueBool() || data.Confirm.IsNull() || data.Confirm.IsUnknown()) {
+	if canConfirm && data.ShouldConfirm() {
 		_, err = CallFlowsAPI[ConfirmAppInstallationRequest, struct{}](*r.providerData, confirmInstallationPath, ConfirmAppInstallationRequest{
 			ID:   createAppInstallationRes.ID,
 			Wait: data.WaitForConfirm.ValueBool() || data.WaitForConfirm.IsNull() || data.WaitForConfirm.IsUnknown(),
@@ -270,14 +278,24 @@ func (r *AppInstallationResource) Read(ctx context.Context, req resource.ReadReq
 			"color":    types.StringType,
 		})
 	} else {
+		iconUrl := types.StringNull()
+		if appInstallation.StyleOverride.IconURL != "" {
+			iconUrl = types.StringValue(appInstallation.StyleOverride.IconURL)
+		}
+
+		color := types.StringNull()
+		if appInstallation.StyleOverride.Color != "" {
+			color = types.StringValue(appInstallation.StyleOverride.Color)
+		}
+
 		data.StyleOverride = types.ObjectValueMust(
 			map[string]attr.Type{
 				"icon_url": types.StringType,
 				"color":    types.StringType,
 			},
 			map[string]attr.Value{
-				"icon_url": types.StringValue(appInstallation.StyleOverride.IconURL),
-				"color":    types.StringValue(appInstallation.StyleOverride.Color),
+				"icon_url": iconUrl,
+				"color":    color,
 			},
 		)
 	}
@@ -339,8 +357,8 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 	if !data.Name.Equal(config.Name) || !data.StyleOverride.Equal(config.StyleOverride) {
 		metaResp, err := CallFlowsAPI[UpdateAppInstallationMetadataRequest, UpdateAppInstallationMetadataResponse](*r.providerData, updateInstallationMetadataPath, UpdateAppInstallationMetadataRequest{
 			ID:            data.ID.ValueString(),
-			Name:          data.Name.ValueString(),
-			StyleOverride: NewAppInstallationStyleOverride(data.StyleOverride),
+			Name:          config.Name.ValueString(),
+			StyleOverride: NewAppInstallationStyleOverride(config.StyleOverride),
 		})
 		if err != nil {
 			resp.Diagnostics.AddError("Client Error", "Unable to update app installation metadata, got error: "+err.Error())
@@ -350,7 +368,7 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 		data.Name = config.Name
 		data.StyleOverride = config.StyleOverride
 
-		canConfirm = canConfirm || metaResp.Draft
+		canConfirm = metaResp.Draft
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -358,8 +376,8 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 	if !data.AppVersionID.Equal(config.AppVersionID) {
 		versionResp, err := CallFlowsAPI[UpdateAppInstallationVersionRequest, UpdateAppInstallationVersionResponse](*r.providerData, updateInstallationVersionPath, UpdateAppInstallationVersionRequest{
 			ID:             data.ID.ValueString(),
-			CustomRegistry: data.CustomRegistry.ValueBool(),
-			AppVersionID:   data.AppVersionID.ValueString(),
+			CustomRegistry: config.CustomRegistry.ValueBool(),
+			AppVersionID:   config.AppVersionID.ValueString(),
 		})
 		if err != nil {
 			resp.Diagnostics.AddError("Client Error", "Unable to update app installation version, got error: "+err.Error())
@@ -367,7 +385,7 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 		}
 
 		data.AppVersionID = config.AppVersionID
-		canConfirm = canConfirm || versionResp.Draft
+		canConfirm = versionResp.Draft
 	}
 
 	// Save data into Terraform state
@@ -379,7 +397,7 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 			ConfigFields: func() map[string]string {
 				m := make(map[string]string)
 
-				for k, v := range data.ConfigFields.Elements() {
+				for k, v := range config.ConfigFields.Elements() {
 					m[k] = v.(types.String).ValueString()
 				}
 
@@ -392,7 +410,7 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 		}
 
 		data.ConfigFields = config.ConfigFields
-		canConfirm = canConfirm || confResp.Draft
+		canConfirm = confResp.Draft
 	}
 
 	data.Confirm = config.Confirm
@@ -401,7 +419,7 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 
-	if canConfirm && (config.Confirm.ValueBool() || config.Confirm.IsNull() || config.Confirm.IsUnknown()) {
+	if canConfirm && config.ShouldConfirm() {
 		_, err := CallFlowsAPI[ConfirmAppInstallationRequest, struct{}](*r.providerData, confirmInstallationPath, ConfirmAppInstallationRequest{
 			ID:   data.ID.ValueString(),
 			Wait: config.WaitForConfirm.ValueBool() || config.WaitForConfirm.IsNull() || config.WaitForConfirm.IsUnknown(),
