@@ -27,8 +27,8 @@ type SecretResource struct {
 }
 
 type SecretResourceModel struct {
-	Id        types.String `tfsdk:"id"`
-	ProjectId types.String `tfsdk:"project_id"`
+	ID        types.String `tfsdk:"id"`
+	ProjectID types.String `tfsdk:"project_id"`
 	Key       types.String `tfsdk:"key"`
 	Value     types.String `tfsdk:"value"`
 }
@@ -81,7 +81,7 @@ func (r *SecretResource) Configure(ctx context.Context, req resource.ConfigureRe
 }
 
 type CreateSecretRequest struct {
-	ProjectId string `json:"projectId"`
+	ProjectID string `json:"projectId"`
 	Key       string `json:"key"`
 	Value     string `json:"value"`
 }
@@ -105,7 +105,7 @@ func (r *SecretResource) Create(ctx context.Context, req resource.CreateRequest,
 	}
 
 	_, err := CallFlowsAPI[CreateSecretRequest, CreateSecretResponse](*r.providerData, "/provider/organization/create_secret", CreateSecretRequest{
-		ProjectId: config.ProjectId.ValueString(),
+		ProjectID: config.ProjectID.ValueString(),
 		Key:       config.Key.ValueString(),
 		Value:     config.Value.ValueString(),
 	})
@@ -115,7 +115,7 @@ func (r *SecretResource) Create(ctx context.Context, req resource.CreateRequest,
 	}
 
 	// Set the ID as a composite of project_id and key
-	config.Id = types.StringValue(fmt.Sprintf("%s/%s", config.ProjectId.ValueString(), config.Key.ValueString()))
+	config.ID = types.StringValue(fmt.Sprintf("%s/%s", config.ProjectID.ValueString(), config.Key.ValueString()))
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &config)...)
 }
@@ -139,7 +139,7 @@ func (r *SecretResource) Update(ctx context.Context, req resource.UpdateRequest,
 	}
 
 	_, err := CallFlowsAPI[UpdateSecretRequest, struct{}](*r.providerData, "/provider/organization/update_secret", UpdateSecretRequest{
-		ProjectId: config.ProjectId.ValueString(),
+		ProjectId: config.ProjectID.ValueString(),
 		Key:       config.Key.ValueString(),
 		Value:     config.Value.ValueString(),
 	})
@@ -149,7 +149,7 @@ func (r *SecretResource) Update(ctx context.Context, req resource.UpdateRequest,
 	}
 
 	// Update the ID in case the key or project_id changed
-	config.Id = types.StringValue(fmt.Sprintf("%s/%s", config.ProjectId.ValueString(), config.Key.ValueString()))
+	config.ID = types.StringValue(fmt.Sprintf("%s/%s", config.ProjectID.ValueString(), config.Key.ValueString()))
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &config)...)
 }
@@ -177,7 +177,7 @@ func (r *SecretResource) Read(ctx context.Context, req resource.ReadRequest, res
 	}
 
 	_, err := CallFlowsAPI[ReadSecretRequest, ReadSecretResponse](*r.providerData, "/provider/organization/read_secret", ReadSecretRequest{
-		ProjectId: state.ProjectId.ValueString(),
+		ProjectId: state.ProjectID.ValueString(),
 		Key:       state.Key.ValueString(),
 	})
 	if err != nil {
@@ -208,7 +208,7 @@ func (r *SecretResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	}
 
 	_, err := CallFlowsAPI[DeleteSecretRequest, struct{}](*r.providerData, "/provider/organization/delete_secret", DeleteSecretRequest{
-		ProjectId: state.ProjectId.ValueString(),
+		ProjectId: state.ProjectID.ValueString(),
 		Key:       state.Key.ValueString(),
 	})
 	if err != nil {
