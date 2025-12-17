@@ -182,6 +182,10 @@ type ConfirmAppInstallationRequest struct {
 	Wait bool   `json:"wait"`
 }
 
+type ConfirmAppInstallationResponse struct {
+	Status string `json:"status"`
+}
+
 func (r *AppInstallationResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data AppInstallationResourceModel
 
@@ -231,13 +235,22 @@ func (r *AppInstallationResource) Create(ctx context.Context, req resource.Creat
 	}
 
 	if canConfirm && data.ShouldConfirm() {
-		_, err = CallFlowsAPI[ConfirmAppInstallationRequest, struct{}](*r.providerData, confirmInstallationPath, ConfirmAppInstallationRequest{
+		wait := data.WaitForConfirm.ValueBool() || data.WaitForConfirm.IsNull() || data.WaitForConfirm.IsUnknown()
+
+		confirmResp, err := CallFlowsAPI[ConfirmAppInstallationRequest, ConfirmAppInstallationResponse](*r.providerData, confirmInstallationPath, ConfirmAppInstallationRequest{
 			ID:   createAppInstallationRes.ID,
-			Wait: data.WaitForConfirm.ValueBool() || data.WaitForConfirm.IsNull() || data.WaitForConfirm.IsUnknown(),
+			Wait: wait,
 		})
 		if err != nil {
 			resp.Diagnostics.AddError("Client Error", "Unable to confirm app installation config, got error: "+err.Error())
 			return
+		}
+
+		if wait && confirmResp.Status != "ready" {
+			resp.Diagnostics.AddError(
+				"App Installation Confirmation Failed",
+				fmt.Sprintf("App installation %q reached status '%s' instead of 'ready'", data.ID, confirmResp.Status),
+			)
 		}
 	}
 }
@@ -420,13 +433,22 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 
 	if canConfirm && config.ShouldConfirm() {
-		_, err := CallFlowsAPI[ConfirmAppInstallationRequest, struct{}](*r.providerData, confirmInstallationPath, ConfirmAppInstallationRequest{
+		wait := config.WaitForConfirm.ValueBool() || config.WaitForConfirm.IsNull() || config.WaitForConfirm.IsUnknown()
+
+		confirmResp, err := CallFlowsAPI[ConfirmAppInstallationRequest, ConfirmAppInstallationResponse](*r.providerData, confirmInstallationPath, ConfirmAppInstallationRequest{
 			ID:   data.ID.ValueString(),
-			Wait: config.WaitForConfirm.ValueBool() || config.WaitForConfirm.IsNull() || config.WaitForConfirm.IsUnknown(),
+			Wait: wait,
 		})
 		if err != nil {
 			resp.Diagnostics.AddError("Client Error", "Unable to confirm app installation config, got error: "+err.Error())
 			return
+		}
+
+		if wait && confirmResp.Status != "ready" {
+			resp.Diagnostics.AddError(
+				"App Installation Confirmation Failed",
+				fmt.Sprintf("App installation %q reached status '%s' instead of 'ready'", data.ID, confirmResp.Status),
+			)
 		}
 	}
 }
