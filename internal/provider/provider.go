@@ -95,7 +95,9 @@ func (p *FlowsProvider) Resources(ctx context.Context) []func() resource.Resourc
 }
 
 func (p *FlowsProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
-	return []func() datasource.DataSource{}
+	return []func() datasource.DataSource{
+		NewAppVersionDataSource,
+	}
 }
 
 func New(version string) func() provider.Provider {
