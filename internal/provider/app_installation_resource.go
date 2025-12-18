@@ -325,7 +325,13 @@ func (r *AppInstallationResource) Read(ctx context.Context, req resource.ReadReq
 		data.ConfigFields = func() types.Map {
 			m := make(map[string]attr.Value)
 
+			// We don't care about unexpected fields.
 			for k, v := range appInstallation.ConfigFields {
+				_, ok := data.ConfigFields.Elements()[k]
+				if !ok {
+					continue
+				}
+
 				m[k] = types.StringValue(v)
 			}
 
@@ -414,20 +420,15 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 			ID: data.ID.ValueString(),
 			ConfigFields: func() map[string]*string {
 				m := make(map[string]*string)
-				visited := make(map[string]struct{})
 
 				for k, v := range config.ConfigFields.Elements() {
-					nv := v.(types.String).ValueString()
-					m[k] = &nv
-					visited[k] = struct{}{}
-				}
-
-				for k := range data.ConfigFields.Elements() {
-					if _, ok := visited[k]; ok {
+					if v.IsNull() || v.IsUnknown() {
+						m[k] = nil
 						continue
 					}
 
-					m[k] = nil
+					nv := v.(types.String).ValueString()
+					m[k] = &nv
 				}
 
 				return m
