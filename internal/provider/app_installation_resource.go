@@ -33,20 +33,19 @@ const (
 	confirmInstallationPath        = "/provider/apps/confirm_installation"
 )
 
-func NewAppInstallationResource() resource.Resource {
-	return &AppInstallationResource{}
-}
-
 type AppInstallationResource struct {
 	providerData *FlowsProviderConfiguredData
+}
+
+func NewAppInstallationResource() resource.Resource {
+	return &AppInstallationResource{}
 }
 
 type AppInstallationResourceModel struct {
 	ProjectID      types.String `tfsdk:"project_id"`
 	ID             types.String `tfsdk:"id"`
 	Name           types.String `tfsdk:"name"`
-	AppVersionID   types.String `tfsdk:"app_version_id"`
-	CustomRegistry types.Bool   `tfsdk:"custom_registry"`
+	App            types.Object `tfsdk:"app"`
 	ConfigFields   types.Map    `tfsdk:"config_fields"`
 	Confirm        types.Bool   `tfsdk:"confirm"`
 	WaitForConfirm types.Bool   `tfsdk:"wait_for_confirm"`
@@ -55,6 +54,11 @@ type AppInstallationResourceModel struct {
 
 func (m *AppInstallationResourceModel) ShouldConfirm() bool {
 	return m.Confirm.IsNull() || m.Confirm.IsUnknown() || m.Confirm.ValueBool()
+}
+
+type AppInstallationApp struct {
+	VersionID string `json:"versionId"`
+	Custom    bool   `json:"custom"`
 }
 
 func (r *AppInstallationResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -86,13 +90,18 @@ func (r *AppInstallationResource) Schema(ctx context.Context, req resource.Schem
 				Description: "Name of the app installation.",
 				Required:    true,
 			},
-			"app_version_id": schema.StringAttribute{
-				Description: "Version ID of the app to install. It specifies both, the app and the version.",
-				Required:    true,
-			},
-			"custom_registry": schema.BoolAttribute{
-				Description: "Specifies whether the app is from a custom registry.",
-				Optional:    true,
+			"app": schema.SingleNestedAttribute{
+				Required: true,
+				Attributes: map[string]schema.Attribute{
+					"version_id": schema.StringAttribute{
+						Description: "Version ID of the app to install. It specifies both, the app and the version.",
+						Required:    true,
+					},
+					"custom": schema.BoolAttribute{
+						Description: "Specifies whether the app is from a custom registry.",
+						Required:    true,
+					},
+				},
 			},
 			"config_fields": schema.MapAttribute{
 				Description: "Configuration settings for the app installation.",
@@ -159,11 +168,10 @@ func NewAppInstallationStyleOverride(data types.Object) *AppInstallationStyleOve
 }
 
 type CreateAppInstallationRequest struct {
-	ProjectID      string                        `json:"projectId"`
-	Name           string                        `json:"name"`
-	AppVersionID   string                        `json:"appVersionId"`
-	CustomRegistry bool                          `json:"customRegistry"`
-	StyleOverride  *AppInstallationStyleOverride `json:"styleOverride"`
+	ProjectID     string                        `json:"projectId"`
+	Name          string                        `json:"name"`
+	App           AppInstallationApp            `json:"app"`
+	StyleOverride *AppInstallationStyleOverride `json:"styleOverride"`
 }
 
 type CreateAppInstallationResponse struct {
@@ -194,11 +202,13 @@ func (r *AppInstallationResource) Create(ctx context.Context, req resource.Creat
 	}
 
 	createAppInstallationRes, err := CallFlowsAPI[CreateAppInstallationRequest, CreateAppInstallationResponse](*r.providerData, createInstallationPath, CreateAppInstallationRequest{
-		ProjectID:      data.ProjectID.ValueString(),
-		Name:           data.Name.ValueString(),
-		AppVersionID:   data.AppVersionID.ValueString(),
-		CustomRegistry: data.CustomRegistry.ValueBool(),
-		StyleOverride:  NewAppInstallationStyleOverride(data.StyleOverride),
+		ProjectID: data.ProjectID.ValueString(),
+		Name:      data.Name.ValueString(),
+		App: AppInstallationApp{
+			VersionID: data.App.Attributes()["version_id"].(types.String).ValueString(),
+			Custom:    data.App.Attributes()["custom"].(types.Bool).ValueBool(),
+		},
+		StyleOverride: NewAppInstallationStyleOverride(data.StyleOverride),
 	})
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", "Unable to create app installation, got error: "+err.Error())
@@ -249,7 +259,7 @@ type GetAppInstallationRequest struct {
 type GetAppInstallationResponse struct {
 	Name          string                        `json:"name"`
 	Status        string                        `json:"status"`
-	AppVersionID  string                        `json:"appVersionId"`
+	App           AppInstallationApp            `json:"app"`
 	StyleOverride *AppInstallationStyleOverride `json:"styleOverride"`
 	ConfigFields  map[string]string             `json:"configFields"`
 }
@@ -271,7 +281,16 @@ func (r *AppInstallationResource) Read(ctx context.Context, req resource.ReadReq
 	}
 
 	data.Name = types.StringValue(appInstallation.Name)
-	data.AppVersionID = types.StringValue(appInstallation.AppVersionID)
+	data.App = types.ObjectValueMust(
+		map[string]attr.Type{
+			"version_id": types.StringType,
+			"custom":     types.BoolType,
+		},
+		map[string]attr.Value{
+			"version_id": types.StringValue(appInstallation.App.VersionID),
+			"custom":     types.BoolValue(appInstallation.App.Custom),
+		},
+	)
 
 	if appInstallation.StyleOverride == nil {
 		data.StyleOverride = types.ObjectNull(map[string]attr.Type{
@@ -327,9 +346,8 @@ type UpdateAppInstallationMetadataResponse struct {
 }
 
 type UpdateAppInstallationVersionRequest struct {
-	ID             string `json:"id"`
-	CustomRegistry bool   `json:"customRegistry"`
-	AppVersionID   string `json:"appVersionId"`
+	ID  string             `json:"id"`
+	App AppInstallationApp `json:"app"`
 }
 
 type UpdateAppInstallationVersionResponse struct {
@@ -347,10 +365,6 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 
 	if resp.Diagnostics.HasError() {
 		return
-	}
-
-	if !data.CustomRegistry.Equal(config.CustomRegistry) {
-		resp.Diagnostics.AddError("Immutable field", "`custom_registry` is an immutable field and cannot be changed after creation. Please recreate the resource to change this value.")
 	}
 
 	var canConfirm bool
@@ -374,18 +388,20 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 
-	if !data.AppVersionID.Equal(config.AppVersionID) {
+	if !data.App.Equal(config.App) {
 		versionResp, err := CallFlowsAPI[UpdateAppInstallationVersionRequest, UpdateAppInstallationVersionResponse](*r.providerData, updateInstallationVersionPath, UpdateAppInstallationVersionRequest{
-			ID:             data.ID.ValueString(),
-			CustomRegistry: config.CustomRegistry.ValueBool(),
-			AppVersionID:   config.AppVersionID.ValueString(),
+			ID: data.ID.ValueString(),
+			App: AppInstallationApp{
+				VersionID: config.App.Attributes()["version_id"].(types.String).ValueString(),
+				Custom:    config.App.Attributes()["custom"].(types.Bool).ValueBool(),
+			},
 		})
 		if err != nil {
 			resp.Diagnostics.AddError("Client Error", "Unable to update app installation version, got error: "+err.Error())
 			return
 		}
 
-		data.AppVersionID = config.AppVersionID
+		data.App = config.App
 		canConfirm = versionResp.Draft
 	}
 
