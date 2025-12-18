@@ -14,12 +14,12 @@ Creates and manages an app installation based on the provided configuration.
 
 ```terraform
 resource "flows_app_installation" "example" {
-  project_id     = "your-project-id"
-  name           = "My Custom Installation"
+  project_id = "your-project-id"
+  name       = "My Custom Installation"
 
   app = {
     version_id = "app-installation-version-id"
-    custom  = true
+    custom     = true
   }
 
   config_fields = {
@@ -30,7 +30,7 @@ resource "flows_app_installation" "example" {
     color: "#ff0000"
   }
 
-  confirm          = true
+  confirm        = true
   wait_for_ready = true
 }
 ```
