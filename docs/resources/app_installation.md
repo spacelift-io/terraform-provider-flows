@@ -16,7 +16,11 @@ Creates and manages an app installation based on the provided configuration.
 resource "flows_app_installation" "example" {
   project_id     = "your-project-id"
   name           = "My Custom Installation"
-  app_version_id = "app-installation-version-id"
+
+  app = {
+    version_id = "app-installation-version-id"
+    custom  = true
+  }
 
   config_fields = {
     example: "\"example-value\""
@@ -26,9 +30,8 @@ resource "flows_app_installation" "example" {
     color: "#ff0000"
   }
 
-  custom_registry  = true
   confirm          = true
-  wait_for_confirm = true
+  wait_for_ready = true
 }
 ```
 
@@ -46,7 +49,7 @@ resource "flows_app_installation" "example" {
 - `config_fields` (Map of String) Configuration settings for the app installation.
 - `confirm` (Boolean) Whether to automatically confirm the app installation in case it is in a draft mode.
 - `style_override` (Attributes) (see [below for nested schema](#nestedatt--style_override))
-- `wait_for_confirm` (Boolean) Whether to wait for the app installation to be confirmed when confirm is true.
+- `wait_for_ready` (Boolean) Whether to wait for the app installation to be set to a ready state when "confirm" is true.
 
 ### Read-Only
 

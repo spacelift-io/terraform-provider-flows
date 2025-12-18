@@ -42,14 +42,14 @@ func NewAppInstallationResource() resource.Resource {
 }
 
 type AppInstallationResourceModel struct {
-	ProjectID      types.String `tfsdk:"project_id"`
-	ID             types.String `tfsdk:"id"`
-	Name           types.String `tfsdk:"name"`
-	App            types.Object `tfsdk:"app"`
-	ConfigFields   types.Map    `tfsdk:"config_fields"`
-	Confirm        types.Bool   `tfsdk:"confirm"`
-	WaitForConfirm types.Bool   `tfsdk:"wait_for_confirm"`
-	StyleOverride  types.Object `tfsdk:"style_override"`
+	ProjectID     types.String `tfsdk:"project_id"`
+	ID            types.String `tfsdk:"id"`
+	Name          types.String `tfsdk:"name"`
+	App           types.Object `tfsdk:"app"`
+	ConfigFields  types.Map    `tfsdk:"config_fields"`
+	Confirm       types.Bool   `tfsdk:"confirm"`
+	WaitForReady  types.Bool   `tfsdk:"wait_for_ready"`
+	StyleOverride types.Object `tfsdk:"style_override"`
 }
 
 func (m *AppInstallationResourceModel) ShouldConfirm() bool {
@@ -112,8 +112,8 @@ func (r *AppInstallationResource) Schema(ctx context.Context, req resource.Schem
 				Description: "Whether to automatically confirm the app installation in case it is in a draft mode.",
 				Optional:    true,
 			},
-			"wait_for_confirm": schema.BoolAttribute{
-				Description: "Whether to wait for the app installation to be confirmed when confirm is true.",
+			"wait_for_ready": schema.BoolAttribute{
+				Description: `Whether to wait for the app installation to be set to a ready state when "confirm" is true.`,
 				Optional:    true,
 			},
 			"style_override": schema.SingleNestedAttribute{
@@ -247,7 +247,7 @@ func (r *AppInstallationResource) Create(ctx context.Context, req resource.Creat
 		r.Confirm(
 			ctx,
 			createAppInstallationRes.ID,
-			data.WaitForConfirm.ValueBool() || data.WaitForConfirm.IsNull() || data.WaitForConfirm.IsUnknown(),
+			data.WaitForReady.ValueBool() || data.WaitForReady.IsNull() || data.WaitForReady.IsUnknown(),
 			&resp.Diagnostics,
 		)
 	}
@@ -444,7 +444,7 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 	}
 
 	data.Confirm = config.Confirm
-	data.WaitForConfirm = config.WaitForConfirm
+	data.WaitForReady = config.WaitForReady
 
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
@@ -453,7 +453,7 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 		r.Confirm(
 			ctx,
 			data.ID.String(),
-			config.WaitForConfirm.ValueBool() || config.WaitForConfirm.IsNull() || config.WaitForConfirm.IsUnknown(),
+			config.WaitForReady.ValueBool() || config.WaitForReady.IsNull() || config.WaitForReady.IsUnknown(),
 			&resp.Diagnostics,
 		)
 	}
@@ -569,7 +569,7 @@ func (r *AppInstallationResource) Confirm(
 type confirmWaitValidator struct{}
 
 func (v confirmWaitValidator) Description(ctx context.Context) string {
-	return "If wait_for_confirm is true, confirm must also be true."
+	return `If "wait_for_ready" is true, "confirm" must also be true.`
 }
 
 func (v confirmWaitValidator) MarkdownDescription(ctx context.Context) string {
@@ -587,16 +587,16 @@ func (v confirmWaitValidator) ValidateResource(ctx context.Context, req resource
 	}
 
 	// Be defensive about unknown/null values during planning
-	if cfg.WaitForConfirm.IsUnknown() || cfg.WaitForConfirm.IsNull() ||
+	if cfg.WaitForReady.IsUnknown() || cfg.WaitForReady.IsNull() ||
 		cfg.Confirm.IsUnknown() || cfg.Confirm.IsNull() {
 		return
 	}
 
-	if cfg.WaitForConfirm.ValueBool() && !cfg.Confirm.ValueBool() {
+	if cfg.WaitForReady.ValueBool() && !cfg.Confirm.ValueBool() {
 		resp.Diagnostics.AddAttributeError(
-			path.Root("wait_for_confirm"),
+			path.Root("wait_for_ready"),
 			"Invalid configuration",
-			"`wait_for_confirm` can only be true when `confirm` is true.",
+			`"wait_for_ready" can only be true when "confirm" is true.`,
 		)
 	}
 }

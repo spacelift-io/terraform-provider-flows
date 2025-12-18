@@ -1,7 +1,11 @@
 resource "flows_app_installation" "example" {
   project_id     = "your-project-id"
   name           = "My Custom Installation"
-  app_version_id = "app-installation-version-id"
+
+  app = {
+    version_id = "app-installation-version-id"
+    custom  = true
+  }
 
   config_fields = {
     example: "\"example-value\""
@@ -11,7 +15,6 @@ resource "flows_app_installation" "example" {
     color: "#ff0000"
   }
 
-  custom_registry  = true
   confirm          = true
-  wait_for_confirm = true
+  wait_for_ready = true
 }
