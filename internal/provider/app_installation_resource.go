@@ -24,13 +24,13 @@ var (
 )
 
 const (
-	getInstallationPath            = "/provider/apps/get_installation"
-	createInstallationPath         = "/provider/apps/create_installation"
-	updateInstallationConfigPath   = "/provider/apps/update_installation_config"
-	updateInstallationMetadataPath = "/provider/apps/update_installation_metadata"
-	updateInstallationVersionPath  = "/provider/apps/update_installation_version"
-	deleteInstallationPath         = "/provider/apps/delete_installation"
-	confirmInstallationPath        = "/provider/apps/confirm_installation"
+	getAppInstallationPath            = "/provider/apps/get_installation"
+	createAppInstallationPath         = "/provider/apps/create_installation"
+	updateAppInstallationConfigPath   = "/provider/apps/update_installation_config"
+	updateAppInstallationMetadataPath = "/provider/apps/update_installation_metadata"
+	updateAppInstallationVersionPath  = "/provider/apps/update_installation_version"
+	deleteAppInstallationPath         = "/provider/apps/delete_installation"
+	confirmAppInstallationPath        = "/provider/apps/confirm_installation"
 )
 
 type AppInstallationResource struct {
@@ -180,8 +180,8 @@ type CreateAppInstallationResponse struct {
 }
 
 type UpdateAppInstallationConfigRequest struct {
-	ID           string            `json:"id"`
-	ConfigFields map[string]string `json:"configFields"`
+	ID           string             `json:"id"`
+	ConfigFields map[string]*string `json:"configFields"`
 }
 
 type UpdateAppInstallationConfigResponse struct {
@@ -201,7 +201,7 @@ func (r *AppInstallationResource) Create(ctx context.Context, req resource.Creat
 		return
 	}
 
-	createAppInstallationRes, err := CallFlowsAPI[CreateAppInstallationRequest, CreateAppInstallationResponse](*r.providerData, createInstallationPath, CreateAppInstallationRequest{
+	createAppInstallationRes, err := CallFlowsAPI[CreateAppInstallationRequest, CreateAppInstallationResponse](*r.providerData, createAppInstallationPath, CreateAppInstallationRequest{
 		ProjectID: data.ProjectID.ValueString(),
 		Name:      data.Name.ValueString(),
 		App: AppInstallationApp{
@@ -222,13 +222,14 @@ func (r *AppInstallationResource) Create(ctx context.Context, req resource.Creat
 	canConfirm := createAppInstallationRes.Draft
 
 	if !data.ConfigFields.IsNull() && !data.ConfigFields.IsUnknown() {
-		appInstallation, err := CallFlowsAPI[UpdateAppInstallationConfigRequest, UpdateAppInstallationConfigResponse](*r.providerData, updateInstallationConfigPath, UpdateAppInstallationConfigRequest{
+		appInstallation, err := CallFlowsAPI[UpdateAppInstallationConfigRequest, UpdateAppInstallationConfigResponse](*r.providerData, updateAppInstallationConfigPath, UpdateAppInstallationConfigRequest{
 			ID: createAppInstallationRes.ID,
-			ConfigFields: func() map[string]string {
-				m := make(map[string]string)
+			ConfigFields: func() map[string]*string {
+				m := make(map[string]*string)
 
 				for k, v := range data.ConfigFields.Elements() {
-					m[k] = v.(types.String).ValueString()
+					nv := v.(types.String).ValueString()
+					m[k] = &nv
 				}
 
 				return m
@@ -272,7 +273,7 @@ func (r *AppInstallationResource) Read(ctx context.Context, req resource.ReadReq
 		return
 	}
 
-	appInstallation, err := CallFlowsAPI[GetAppInstallationRequest, GetAppInstallationResponse](*r.providerData, getInstallationPath, GetAppInstallationRequest{
+	appInstallation, err := CallFlowsAPI[GetAppInstallationRequest, GetAppInstallationResponse](*r.providerData, getAppInstallationPath, GetAppInstallationRequest{
 		ID: data.ID.ValueString(),
 	})
 	if err != nil {
@@ -370,7 +371,7 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 	var canConfirm bool
 
 	if !data.Name.Equal(config.Name) || !data.StyleOverride.Equal(config.StyleOverride) {
-		metaResp, err := CallFlowsAPI[UpdateAppInstallationMetadataRequest, UpdateAppInstallationMetadataResponse](*r.providerData, updateInstallationMetadataPath, UpdateAppInstallationMetadataRequest{
+		metaResp, err := CallFlowsAPI[UpdateAppInstallationMetadataRequest, UpdateAppInstallationMetadataResponse](*r.providerData, updateAppInstallationMetadataPath, UpdateAppInstallationMetadataRequest{
 			ID:            data.ID.ValueString(),
 			Name:          config.Name.ValueString(),
 			StyleOverride: NewAppInstallationStyleOverride(config.StyleOverride),
@@ -389,7 +390,7 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 
 	if !data.App.Equal(config.App) {
-		versionResp, err := CallFlowsAPI[UpdateAppInstallationVersionRequest, UpdateAppInstallationVersionResponse](*r.providerData, updateInstallationVersionPath, UpdateAppInstallationVersionRequest{
+		versionResp, err := CallFlowsAPI[UpdateAppInstallationVersionRequest, UpdateAppInstallationVersionResponse](*r.providerData, updateAppInstallationVersionPath, UpdateAppInstallationVersionRequest{
 			ID: data.ID.ValueString(),
 			App: AppInstallationApp{
 				VersionID: config.App.Attributes()["version_id"].(types.String).ValueString(),
@@ -409,13 +410,24 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 
 	if !data.ConfigFields.Equal(config.ConfigFields) {
-		confResp, err := CallFlowsAPI[UpdateAppInstallationConfigRequest, UpdateAppInstallationConfigResponse](*r.providerData, updateInstallationConfigPath, UpdateAppInstallationConfigRequest{
+		confResp, err := CallFlowsAPI[UpdateAppInstallationConfigRequest, UpdateAppInstallationConfigResponse](*r.providerData, updateAppInstallationConfigPath, UpdateAppInstallationConfigRequest{
 			ID: data.ID.ValueString(),
-			ConfigFields: func() map[string]string {
-				m := make(map[string]string)
+			ConfigFields: func() map[string]*string {
+				m := make(map[string]*string)
+				visited := make(map[string]struct{})
 
 				for k, v := range config.ConfigFields.Elements() {
-					m[k] = v.(types.String).ValueString()
+					nv := v.(types.String).ValueString()
+					m[k] = &nv
+					visited[k] = struct{}{}
+				}
+
+				for k := range data.ConfigFields.Elements() {
+					if _, ok := visited[k]; ok {
+						continue
+					}
+
+					m[k] = nil
 				}
 
 				return m
@@ -461,7 +473,7 @@ func (r *AppInstallationResource) Delete(ctx context.Context, req resource.Delet
 	}
 
 	// Delete the app installation.
-	_, err := CallFlowsAPI[DeleteAppInstallationRequest, struct{}](*r.providerData, deleteInstallationPath, DeleteAppInstallationRequest{
+	_, err := CallFlowsAPI[DeleteAppInstallationRequest, struct{}](*r.providerData, deleteAppInstallationPath, DeleteAppInstallationRequest{
 		ID: data.ID.ValueString(),
 	})
 	if err != nil {
@@ -480,7 +492,7 @@ func (r *AppInstallationResource) Confirm(
 	wait bool,
 	dg *diag.Diagnostics,
 ) {
-	_, err := CallFlowsAPI[ConfirmAppInstallationRequest, struct{}](*r.providerData, confirmInstallationPath, ConfirmAppInstallationRequest{
+	_, err := CallFlowsAPI[ConfirmAppInstallationRequest, struct{}](*r.providerData, confirmAppInstallationPath, ConfirmAppInstallationRequest{
 		ID: id,
 	})
 	if err != nil {
@@ -501,7 +513,7 @@ func (r *AppInstallationResource) Confirm(
 	for i := range maxRetries {
 		appInstallation, err := CallFlowsAPI[GetAppInstallationRequest, GetAppInstallationResponse](
 			*r.providerData,
-			getInstallationPath,
+			getAppInstallationPath,
 			GetAppInstallationRequest{
 				ID: id,
 			},

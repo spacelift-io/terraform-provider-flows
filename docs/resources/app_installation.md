@@ -37,7 +37,7 @@ resource "flows_app_installation" "example" {
 
 ### Required
 
-- `app_version_id` (String) Version ID of the app to install. It specifies both, the app and the version.
+- `app` (Attributes) (see [below for nested schema](#nestedatt--app))
 - `name` (String) Name of the app installation.
 - `project_id` (String) ID of the project to create the app installation in.
 
@@ -45,13 +45,21 @@ resource "flows_app_installation" "example" {
 
 - `config_fields` (Map of String) Configuration settings for the app installation.
 - `confirm` (Boolean) Whether to automatically confirm the app installation in case it is in a draft mode.
-- `custom_registry` (Boolean) Specifies whether the app is from a custom registry.
 - `style_override` (Attributes) (see [below for nested schema](#nestedatt--style_override))
 - `wait_for_confirm` (Boolean) Whether to wait for the app installation to be confirmed when confirm is true.
 
 ### Read-Only
 
 - `id` (String) ID of the app installation.
+
+<a id="nestedatt--app"></a>
+### Nested Schema for `app`
+
+Required:
+
+- `custom` (Boolean) Specifies whether the app is from a custom registry.
+- `version_id` (String) Version ID of the app to install. It specifies both, the app and the version.
+
 
 <a id="nestedatt--style_override"></a>
 ### Nested Schema for `style_override`
