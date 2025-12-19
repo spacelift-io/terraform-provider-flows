@@ -215,17 +215,9 @@ func (r *AppInstallationResource) Create(ctx context.Context, req resource.Creat
 	var data AppInstallationResourceModel
 
 	// Read Terraform plan data into the model.
-	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
-	}
-
-	if data.Confirm.IsNull() {
-		data.Confirm = types.BoolValue(true)
-	}
-
-	if data.WaitForReady.IsNull() {
-		data.WaitForReady = types.BoolValue(true)
 	}
 
 	createAppInstallationRes, err := CallFlowsAPI[CreateAppInstallationRequest, CreateAppInstallationResponse](*r.providerData, createAppInstallationPath, CreateAppInstallationRequest{
@@ -264,8 +256,6 @@ func (r *AppInstallationResource) Create(ctx context.Context, req resource.Creat
 			resp.Diagnostics.AddError("Client Error", "Unable to update app installation config, got error: "+err.Error())
 			return
 		}
-	} else {
-		data.ConfigFields = types.MapValueMust(types.StringType, make(map[string]attr.Value))
 	}
 
 	if data.Confirm.ValueBool() {
@@ -280,6 +270,11 @@ func (r *AppInstallationResource) Create(ctx context.Context, req resource.Creat
 	}
 
 	if data.WaitForReady.ValueBool() {
+		if !data.Confirm.ValueBool() {
+			resp.Diagnostics.AddWarning("Invalid Configuration", `"wait_for_ready" is true but "confirm" is false. Skipping wait for ready.`)
+			return
+		}
+
 		r.WaitForReady(
 			ctx,
 			createAppInstallationRes.ID,
@@ -306,14 +301,6 @@ func (r *AppInstallationResource) Read(ctx context.Context, req resource.ReadReq
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 	if resp.Diagnostics.HasError() {
 		return
-	}
-
-	if data.Confirm.IsNull() {
-		data.Confirm = types.BoolValue(true)
-	}
-
-	if data.WaitForReady.IsNull() {
-		data.WaitForReady = types.BoolValue(true)
 	}
 
 	appInstallation, err := CallFlowsAPI[GetAppInstallationRequest, GetAppInstallationResponse](*r.providerData, getAppInstallationPath, GetAppInstallationRequest{
@@ -414,7 +401,7 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 
 	var config AppInstallationResourceModel
 
-	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &config)...)
 
 	if resp.Diagnostics.HasError() {
 		return
@@ -423,22 +410,12 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 	var defaultsChanged bool
 
 	if !data.Confirm.Equal(config.Confirm) {
-		if !config.Confirm.IsNull() {
-			data.Confirm = config.Confirm
-		} else {
-			data.Confirm = types.BoolValue(true)
-		}
-
+		data.Confirm = config.Confirm
 		defaultsChanged = true
 	}
 
 	if !data.WaitForReady.Equal(config.WaitForReady) {
-		if !config.WaitForReady.IsNull() {
-			data.WaitForReady = config.WaitForReady
-		} else {
-			data.WaitForReady = types.BoolValue(true)
-		}
-
+		data.WaitForReady = config.WaitForReady
 		defaultsChanged = true
 	}
 
@@ -467,13 +444,11 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 	}
 
 	if !data.App.Equal(config.App) {
-		custom := config.App.Attributes()["custom"].(types.Bool)
-
 		reqResp, err := CallFlowsAPI[UpdateAppInstallationVersionRequest, UpdateAppInstallationVersionResponse](*r.providerData, updateAppInstallationVersionPath, UpdateAppInstallationVersionRequest{
 			ID: data.ID.ValueString(),
 			App: AppInstallationApp{
 				VersionID: config.App.Attributes()["version_id"].(types.String).ValueString(),
-				Custom:    custom.ValueBool(),
+				Custom:    config.App.Attributes()["custom"].(types.Bool).ValueBool(),
 			},
 		})
 		if err != nil {
@@ -481,28 +456,14 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 			return
 		}
 
-		if custom.IsNull() {
-			custom = types.BoolValue(false)
-		}
-
-		data.App = types.ObjectValueMust(
-			map[string]attr.Type{
-				"version_id": types.StringType,
-				"custom":     types.BoolType,
-			},
-			map[string]attr.Value{
-				"version_id": config.App.Attributes()["version_id"],
-				"custom":     custom,
-			},
-		)
-
+		data.App = config.App
 		canConfirm = reqResp.Draft
 
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	}
 
 	if !data.ConfigFields.Equal(config.ConfigFields) {
-		if !config.ConfigFields.IsNull() {
+		if len(config.ConfigFields.Elements()) != 0 {
 			reqResp, err := CallFlowsAPI[UpdateAppInstallationConfigRequest, UpdateAppInstallationConfigResponse](*r.providerData, updateAppInstallationConfigPath, UpdateAppInstallationConfigRequest{
 				ID: data.ID.ValueString(),
 				ConfigFields: func() map[string]*string {
@@ -527,11 +488,9 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 			}
 
 			canConfirm = reqResp.Draft
-			data.ConfigFields = config.ConfigFields
-		} else {
-			data.ConfigFields = types.MapValueMust(types.StringType, make(map[string]attr.Value))
 		}
 
+		data.ConfigFields = config.ConfigFields
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	}
 
@@ -547,6 +506,11 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 	}
 
 	if config.WaitForReady.ValueBool() {
+		if !data.Confirm.ValueBool() {
+			resp.Diagnostics.AddWarning("Invalid Configuration", `"wait_for_ready" is true but "confirm" is false. Skipping wait for ready.`)
+			return
+		}
+
 		r.WaitForReady(
 			ctx,
 			data.ID.String(),
