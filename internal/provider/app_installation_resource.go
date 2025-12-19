@@ -70,7 +70,7 @@ func (r *AppInstallationResource) Metadata(ctx context.Context, req resource.Met
 
 func (r *AppInstallationResource) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
 	return []resource.ConfigValidator{
-		confirmWaitValidator{},
+		waitForReadyValidator{},
 	}
 }
 
@@ -532,6 +532,8 @@ func (r *AppInstallationResource) Delete(ctx context.Context, req resource.Delet
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete app installation, got error: %s", err))
 		return
 	}
+
+	r.WaitForDeleted(ctx, data.ID.ValueString(), &resp.Diagnostics)
 }
 
 func (r *AppInstallationResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
@@ -588,7 +590,7 @@ func (r *AppInstallationResource) WaitForReady(
 			// Terminal failure states
 			dg.AddError(
 				"App Installation Failed",
-				fmt.Sprintf("App Installation %q reached status '%s' instead of 'ready'", id, status),
+				fmt.Sprintf(`App Installation %q reached status %q instead of "ready"`, id, status),
 			)
 
 			return
@@ -600,7 +602,7 @@ func (r *AppInstallationResource) WaitForReady(
 			// Unknown status
 			dg.AddError(
 				"Unknown App Installation Status",
-				fmt.Sprintf("App Installation %s has unknown status '%s'", id, status),
+				fmt.Sprintf(`App Installation %s has unknown status %q`, id, status),
 			)
 
 			return
@@ -610,7 +612,7 @@ func (r *AppInstallationResource) WaitForReady(
 	// Timeout reached
 	dg.AddError(
 		"App Installation Confirmation Timeout",
-		fmt.Sprintf("App Installation %s did not reach a settled state within 5 minutes, last status was '%s'", id, status),
+		fmt.Sprintf(`App Installation %s did not reach a settled state within 5 minutes, last status was %q`, id, status),
 	)
 }
 
@@ -631,10 +633,20 @@ func (r *AppInstallationResource) WaitForDeleted(
 		)
 		if err != nil {
 			if err.Error() == "not found" {
+				// Success case
 				return
 			}
 
 			dg.AddError("Client Error", fmt.Sprintf("Unable to read app installation, got error: %s", err.Error()))
+			return
+		}
+
+		if status != "draining" && status != "drained" {
+			dg.AddError(
+				"App Installation Deletion Failed",
+				fmt.Sprintf(`App Installation %s reached status %q instead of being deleted`, id, status),
+			)
+
 			return
 		}
 
@@ -651,21 +663,21 @@ func (r *AppInstallationResource) WaitForDeleted(
 	// Timeout reached
 	dg.AddError(
 		"App Installation Deletion Timeout",
-		fmt.Sprintf("App Installation %s did not reach a deleted state within 5 minutes, last status was '%s'", id, status),
+		fmt.Sprintf(`App Installation %s did not reach a deleted state within 5 minutes, last status was %q`, id, status),
 	)
 }
 
-type confirmWaitValidator struct{}
+type waitForReadyValidator struct{}
 
-func (v confirmWaitValidator) Description(ctx context.Context) string {
+func (v waitForReadyValidator) Description(ctx context.Context) string {
 	return `If "wait_for_ready" is true, "confirm" must also be true.`
 }
 
-func (v confirmWaitValidator) MarkdownDescription(ctx context.Context) string {
+func (v waitForReadyValidator) MarkdownDescription(ctx context.Context) string {
 	return v.Description(ctx)
 }
 
-func (v confirmWaitValidator) ValidateResource(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+func (v waitForReadyValidator) ValidateResource(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
 	var cfg AppInstallationResourceModel
 
 	diags := req.Config.Get(ctx, &cfg)
