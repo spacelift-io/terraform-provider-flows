@@ -217,6 +217,14 @@ func (r *AppInstallationResource) Create(ctx context.Context, req resource.Creat
 		return
 	}
 
+	if data.Confirm.IsNull() {
+		data.Confirm = types.BoolValue(true)
+	}
+
+	if data.WaitForReady.IsNull() {
+		data.WaitForReady = types.BoolValue(true)
+	}
+
 	createAppInstallationRes, err := CallFlowsAPI[CreateAppInstallationRequest, CreateAppInstallationResponse](*r.providerData, createAppInstallationPath, CreateAppInstallationRequest{
 		ProjectID: data.ProjectID.ValueString(),
 		Name:      data.Name.ValueString(),
@@ -235,10 +243,8 @@ func (r *AppInstallationResource) Create(ctx context.Context, req resource.Creat
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 
-	var canConfirm bool
-
 	if len(data.ConfigFields.Elements()) != 0 {
-		reqResp, err := CallFlowsAPI[UpdateAppInstallationConfigRequest, UpdateAppInstallationConfigResponse](*r.providerData, updateAppInstallationConfigPath, UpdateAppInstallationConfigRequest{
+		_, err := CallFlowsAPI[UpdateAppInstallationConfigRequest, UpdateAppInstallationConfigResponse](*r.providerData, updateAppInstallationConfigPath, UpdateAppInstallationConfigRequest{
 			ID: createAppInstallationRes.ID,
 			ConfigFields: func() map[string]*string {
 				m := make(map[string]*string)
@@ -255,16 +261,19 @@ func (r *AppInstallationResource) Create(ctx context.Context, req resource.Creat
 			resp.Diagnostics.AddError("Client Error", "Unable to update app installation config, got error: "+err.Error())
 			return
 		}
-
-		canConfirm = reqResp.Draft
+	} else {
+		data.ConfigFields = types.MapValueMust(types.StringType, make(map[string]attr.Value))
 	}
 
-	if canConfirm && data.Confirm.ValueBool() {
-		r.Confirm(
+	if data.Confirm.ValueBool() {
+		ok := r.Confirm(
 			ctx,
 			createAppInstallationRes.ID,
 			&resp.Diagnostics,
 		)
+		if !ok {
+			return
+		}
 	}
 
 	if data.WaitForReady.ValueBool() {
@@ -410,13 +419,23 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 
 	var defaultsChanged bool
 
-	if !config.Confirm.IsNull() && !data.Confirm.Equal(config.Confirm) {
-		data.Confirm = config.Confirm
+	if !data.Confirm.Equal(config.Confirm) {
+		if !config.Confirm.IsNull() {
+			data.Confirm = config.Confirm
+		} else {
+			data.Confirm = types.BoolValue(true)
+		}
+
 		defaultsChanged = true
 	}
 
-	if !config.WaitForReady.IsNull() && !data.Confirm.Equal(config.Confirm) {
-		data.WaitForReady = config.WaitForReady
+	if !data.WaitForReady.Equal(config.WaitForReady) {
+		if !config.WaitForReady.IsNull() {
+			data.WaitForReady = config.WaitForReady
+		} else {
+			data.WaitForReady = types.BoolValue(true)
+		}
+
 		defaultsChanged = true
 	}
 
@@ -463,42 +482,49 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	}
 
-	if !config.ConfigFields.IsNull() && !data.ConfigFields.Equal(config.ConfigFields) {
-		reqResp, err := CallFlowsAPI[UpdateAppInstallationConfigRequest, UpdateAppInstallationConfigResponse](*r.providerData, updateAppInstallationConfigPath, UpdateAppInstallationConfigRequest{
-			ID: data.ID.ValueString(),
-			ConfigFields: func() map[string]*string {
-				m := make(map[string]*string)
+	if !data.ConfigFields.Equal(config.ConfigFields) {
+		if !config.ConfigFields.IsNull() {
+			reqResp, err := CallFlowsAPI[UpdateAppInstallationConfigRequest, UpdateAppInstallationConfigResponse](*r.providerData, updateAppInstallationConfigPath, UpdateAppInstallationConfigRequest{
+				ID: data.ID.ValueString(),
+				ConfigFields: func() map[string]*string {
+					m := make(map[string]*string)
 
-				for k, v := range config.ConfigFields.Elements() {
-					if v.IsNull() {
-						m[k] = nil
-						continue
+					for k, v := range config.ConfigFields.Elements() {
+						if v.IsNull() {
+							m[k] = nil
+							continue
+						}
+
+						nv := v.(types.String).ValueString()
+						m[k] = &nv
 					}
 
-					nv := v.(types.String).ValueString()
-					m[k] = &nv
-				}
+					return m
+				}(),
+			})
+			if err != nil {
+				resp.Diagnostics.AddError("Client Error", "Unable to update app installation config, got error: "+err.Error())
+				return
+			}
 
-				return m
-			}(),
-		})
-		if err != nil {
-			resp.Diagnostics.AddError("Client Error", "Unable to update app installation config, got error: "+err.Error())
-			return
+			canConfirm = reqResp.Draft
+			data.ConfigFields = config.ConfigFields
+		} else {
+			data.ConfigFields = types.MapValueMust(types.StringType, make(map[string]attr.Value))
 		}
-
-		data.ConfigFields = config.ConfigFields
-		canConfirm = reqResp.Draft
 
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	}
 
 	if canConfirm && config.Confirm.ValueBool() {
-		r.Confirm(
+		ok := r.Confirm(
 			ctx,
 			data.ID.String(),
 			&resp.Diagnostics,
 		)
+		if !ok {
+			return
+		}
 	}
 
 	if config.WaitForReady.ValueBool() {
@@ -544,14 +570,16 @@ func (r *AppInstallationResource) Confirm(
 	ctx context.Context,
 	id string,
 	dg *diag.Diagnostics,
-) {
+) bool {
 	_, err := CallFlowsAPI[ConfirmAppInstallationRequest, struct{}](*r.providerData, confirmAppInstallationPath, ConfirmAppInstallationRequest{
 		ID: id,
 	})
 	if err != nil && err.Error() != "app installation is not a draft" {
 		dg.AddError("Client Error", fmt.Sprintf("Unable to confirm app installation %q, got error: %s", id, err.Error()))
-		return
+		return false
 	}
+
+	return true
 }
 
 func (r *AppInstallationResource) WaitForReady(
@@ -640,6 +668,8 @@ func (r *AppInstallationResource) WaitForDeleted(
 			dg.AddError("Client Error", fmt.Sprintf("Unable to read app installation, got error: %s", err.Error()))
 			return
 		}
+
+		status = appInstallation.Status
 
 		if status != "draining" && status != "drained" {
 			dg.AddError(
