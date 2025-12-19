@@ -166,7 +166,7 @@ type AppInstallationStyleOverride struct {
 func NewAppInstallationStyleOverride(data types.Object) *AppInstallationStyleOverride {
 	var styleOverride *AppInstallationStyleOverride
 
-	if !data.IsNull() && !data.IsUnknown() {
+	if !data.IsNull() {
 		styleOverride = &AppInstallationStyleOverride{}
 
 		iconURL, ok := data.Attributes()["icon_url"]
