@@ -15,8 +15,11 @@ import (
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &FlowResource{}
-var _ resource.ResourceWithImportState = &FlowResource{}
+var (
+	_ resource.Resource                = &FlowResource{}
+	_ resource.ResourceWithModifyPlan  = &FlowResource{}
+	_ resource.ResourceWithImportState = &FlowResource{}
+)
 
 func NewFlowResource() resource.Resource {
 	return &FlowResource{}
