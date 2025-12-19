@@ -60,8 +60,11 @@ resource "flows_app_installation" "example" {
 
 Required:
 
-- `custom` (Boolean) Specifies whether the app is from a custom registry.
 - `version_id` (String) Version ID of the app to install. It specifies both, the app and the version.
+
+Optional:
+
+- `custom` (Boolean) Specifies whether the version is from a custom app.
 
 
 <a id="nestedatt--style_override"></a>

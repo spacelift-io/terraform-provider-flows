@@ -10,6 +10,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/mapdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -33,6 +35,11 @@ const (
 	confirmAppInstallationPath        = "/provider/apps/confirm_installation"
 )
 
+const (
+	maxPollRetries    = 60
+	pollRetryInterval = 5 * time.Second
+)
+
 type AppInstallationResource struct {
 	providerData *FlowsProviderConfiguredData
 }
@@ -50,10 +57,6 @@ type AppInstallationResourceModel struct {
 	Confirm       types.Bool   `tfsdk:"confirm"`
 	WaitForReady  types.Bool   `tfsdk:"wait_for_ready"`
 	StyleOverride types.Object `tfsdk:"style_override"`
-}
-
-func (m *AppInstallationResourceModel) ShouldConfirm() bool {
-	return m.Confirm.IsNull() || m.Confirm.IsUnknown() || m.Confirm.ValueBool()
 }
 
 type AppInstallationApp struct {
@@ -98,8 +101,10 @@ func (r *AppInstallationResource) Schema(ctx context.Context, req resource.Schem
 						Required:    true,
 					},
 					"custom": schema.BoolAttribute{
-						Description: "Specifies whether the app is from a custom registry.",
-						Required:    true,
+						Description: "Specifies whether the version is from a custom app.",
+						Optional:    true,
+						Computed:    true,
+						Default:     booldefault.StaticBool(false),
 					},
 				},
 			},
@@ -107,14 +112,25 @@ func (r *AppInstallationResource) Schema(ctx context.Context, req resource.Schem
 				Description: "Configuration settings for the app installation.",
 				ElementType: types.StringType,
 				Optional:    true,
+				Computed:    true,
+				Default: mapdefault.StaticValue(
+					types.MapValueMust(
+						types.StringType,
+						make(map[string]attr.Value),
+					),
+				),
 			},
 			"confirm": schema.BoolAttribute{
 				Description: "Whether to automatically confirm the app installation in case it is in a draft mode.",
 				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(true),
 			},
 			"wait_for_ready": schema.BoolAttribute{
 				Description: `Whether to wait for the app installation to be set to a ready state when "confirm" is true.`,
 				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(true),
 			},
 			"style_override": schema.SingleNestedAttribute{
 				Attributes: map[string]schema.Attribute{
@@ -219,10 +235,10 @@ func (r *AppInstallationResource) Create(ctx context.Context, req resource.Creat
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 
-	canConfirm := createAppInstallationRes.Draft
+	var canConfirm bool
 
-	if !data.ConfigFields.IsNull() && !data.ConfigFields.IsUnknown() {
-		appInstallation, err := CallFlowsAPI[UpdateAppInstallationConfigRequest, UpdateAppInstallationConfigResponse](*r.providerData, updateAppInstallationConfigPath, UpdateAppInstallationConfigRequest{
+	if len(data.ConfigFields.Elements()) != 0 {
+		reqResp, err := CallFlowsAPI[UpdateAppInstallationConfigRequest, UpdateAppInstallationConfigResponse](*r.providerData, updateAppInstallationConfigPath, UpdateAppInstallationConfigRequest{
 			ID: createAppInstallationRes.ID,
 			ConfigFields: func() map[string]*string {
 				m := make(map[string]*string)
@@ -240,14 +256,21 @@ func (r *AppInstallationResource) Create(ctx context.Context, req resource.Creat
 			return
 		}
 
-		canConfirm = appInstallation.Draft
+		canConfirm = reqResp.Draft
 	}
 
-	if canConfirm && data.ShouldConfirm() {
+	if canConfirm && data.Confirm.ValueBool() {
 		r.Confirm(
 			ctx,
 			createAppInstallationRes.ID,
-			data.WaitForReady.ValueBool() || data.WaitForReady.IsNull() || data.WaitForReady.IsUnknown(),
+			&resp.Diagnostics,
+		)
+	}
+
+	if data.WaitForReady.ValueBool() {
+		r.WaitForReady(
+			ctx,
+			createAppInstallationRes.ID,
 			&resp.Diagnostics,
 		)
 	}
@@ -273,10 +296,23 @@ func (r *AppInstallationResource) Read(ctx context.Context, req resource.ReadReq
 		return
 	}
 
+	if data.Confirm.IsNull() {
+		data.Confirm = types.BoolValue(true)
+	}
+
+	if data.WaitForReady.IsNull() {
+		data.WaitForReady = types.BoolValue(true)
+	}
+
 	appInstallation, err := CallFlowsAPI[GetAppInstallationRequest, GetAppInstallationResponse](*r.providerData, getAppInstallationPath, GetAppInstallationRequest{
 		ID: data.ID.ValueString(),
 	})
 	if err != nil {
+		if err.Error() == "not found" {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+
 		resp.Diagnostics.AddError("Client Error", "Unable to read app installation, got error: "+err.Error())
 		return
 	}
@@ -321,23 +357,21 @@ func (r *AppInstallationResource) Read(ctx context.Context, req resource.ReadReq
 		)
 	}
 
-	if len(appInstallation.ConfigFields) != 0 {
-		data.ConfigFields = func() types.Map {
-			m := make(map[string]attr.Value)
+	data.ConfigFields = func() types.Map {
+		m := make(map[string]attr.Value)
 
-			// We don't care about unexpected fields.
-			for k, v := range appInstallation.ConfigFields {
-				_, ok := data.ConfigFields.Elements()[k]
-				if !ok {
-					continue
-				}
-
-				m[k] = types.StringValue(v)
+		// We don't care about unexpected fields.
+		for k, v := range appInstallation.ConfigFields {
+			_, ok := data.ConfigFields.Elements()[k]
+			if !ok {
+				continue
 			}
 
-			return types.MapValueMust(types.StringType, m)
-		}()
-	}
+			m[k] = types.StringValue(v)
+		}
+
+		return types.MapValueMust(types.StringType, m)
+	}()
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
@@ -377,7 +411,7 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 	var canConfirm bool
 
 	if !data.Name.Equal(config.Name) || !data.StyleOverride.Equal(config.StyleOverride) {
-		metaResp, err := CallFlowsAPI[UpdateAppInstallationMetadataRequest, UpdateAppInstallationMetadataResponse](*r.providerData, updateAppInstallationMetadataPath, UpdateAppInstallationMetadataRequest{
+		reqResp, err := CallFlowsAPI[UpdateAppInstallationMetadataRequest, UpdateAppInstallationMetadataResponse](*r.providerData, updateAppInstallationMetadataPath, UpdateAppInstallationMetadataRequest{
 			ID:            data.ID.ValueString(),
 			Name:          config.Name.ValueString(),
 			StyleOverride: NewAppInstallationStyleOverride(config.StyleOverride),
@@ -389,14 +423,13 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 
 		data.Name = config.Name
 		data.StyleOverride = config.StyleOverride
-
-		canConfirm = metaResp.Draft
+		canConfirm = reqResp.Draft
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 
 	if !data.App.Equal(config.App) {
-		versionResp, err := CallFlowsAPI[UpdateAppInstallationVersionRequest, UpdateAppInstallationVersionResponse](*r.providerData, updateAppInstallationVersionPath, UpdateAppInstallationVersionRequest{
+		reqResp, err := CallFlowsAPI[UpdateAppInstallationVersionRequest, UpdateAppInstallationVersionResponse](*r.providerData, updateAppInstallationVersionPath, UpdateAppInstallationVersionRequest{
 			ID: data.ID.ValueString(),
 			App: AppInstallationApp{
 				VersionID: config.App.Attributes()["version_id"].(types.String).ValueString(),
@@ -409,20 +442,20 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 		}
 
 		data.App = config.App
-		canConfirm = versionResp.Draft
+		canConfirm = reqResp.Draft
 	}
 
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 
 	if !data.ConfigFields.Equal(config.ConfigFields) {
-		confResp, err := CallFlowsAPI[UpdateAppInstallationConfigRequest, UpdateAppInstallationConfigResponse](*r.providerData, updateAppInstallationConfigPath, UpdateAppInstallationConfigRequest{
+		reqResp, err := CallFlowsAPI[UpdateAppInstallationConfigRequest, UpdateAppInstallationConfigResponse](*r.providerData, updateAppInstallationConfigPath, UpdateAppInstallationConfigRequest{
 			ID: data.ID.ValueString(),
 			ConfigFields: func() map[string]*string {
 				m := make(map[string]*string)
 
 				for k, v := range config.ConfigFields.Elements() {
-					if v.IsNull() || v.IsUnknown() {
+					if v.IsNull() {
 						m[k] = nil
 						continue
 					}
@@ -440,7 +473,7 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 		}
 
 		data.ConfigFields = config.ConfigFields
-		canConfirm = confResp.Draft
+		canConfirm = reqResp.Draft
 	}
 
 	data.Confirm = config.Confirm
@@ -449,11 +482,18 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 
-	if canConfirm && config.ShouldConfirm() {
+	if canConfirm && config.Confirm.ValueBool() {
 		r.Confirm(
 			ctx,
 			data.ID.String(),
-			config.WaitForReady.ValueBool() || config.WaitForReady.IsNull() || config.WaitForReady.IsUnknown(),
+			&resp.Diagnostics,
+		)
+	}
+
+	if config.WaitForReady.ValueBool() {
+		r.WaitForReady(
+			ctx,
+			data.ID.String(),
 			&resp.Diagnostics,
 		)
 	}
@@ -490,28 +530,27 @@ func (r *AppInstallationResource) ImportState(ctx context.Context, req resource.
 func (r *AppInstallationResource) Confirm(
 	ctx context.Context,
 	id string,
-	wait bool,
 	dg *diag.Diagnostics,
 ) {
 	_, err := CallFlowsAPI[ConfirmAppInstallationRequest, struct{}](*r.providerData, confirmAppInstallationPath, ConfirmAppInstallationRequest{
 		ID: id,
 	})
-	if err != nil {
+	if err != nil && err.Error() != "app installation is not a draft" {
 		dg.AddError("Client Error", fmt.Sprintf("Unable to confirm app installation %q, got error: %s", id, err.Error()))
 		return
 	}
 
-	if !wait {
-		return
-	}
+	return
+}
 
-	// Poll for the status to settle
-	maxRetries := 60 // 5 minutes with 5-second intervals
-
-	retryInterval := 5 * time.Second
+func (r *AppInstallationResource) WaitForReady(
+	ctx context.Context,
+	id string,
+	dg *diag.Diagnostics,
+) {
 	var status string
 
-	for i := range maxRetries {
+	for i := range maxPollRetries {
 		appInstallation, err := CallFlowsAPI[GetAppInstallationRequest, GetAppInstallationResponse](
 			*r.providerData,
 			getAppInstallationPath,
@@ -546,7 +585,7 @@ func (r *AppInstallationResource) Confirm(
 			return
 		case "draft", "in_progress":
 			// Transitional states, continue polling
-			time.Sleep(retryInterval)
+			time.Sleep(pollRetryInterval)
 			continue
 		default:
 			// Unknown status
@@ -563,6 +602,47 @@ func (r *AppInstallationResource) Confirm(
 	dg.AddError(
 		"App Installation Confirmation Timeout",
 		fmt.Sprintf("App Installation %s did not reach a settled state within 5 minutes, last status was '%s'", id, status),
+	)
+}
+
+func (r *AppInstallationResource) WaitForDeleted(
+	ctx context.Context,
+	id string,
+	dg *diag.Diagnostics,
+) {
+	var status string
+
+	for i := range maxPollRetries {
+		appInstallation, err := CallFlowsAPI[GetAppInstallationRequest, GetAppInstallationResponse](
+			*r.providerData,
+			getAppInstallationPath,
+			GetAppInstallationRequest{
+				ID: id,
+			},
+		)
+		if err != nil {
+			if err.Error() == "not found" {
+				return
+			}
+
+			dg.AddError("Client Error", fmt.Sprintf("Unable to read app installation, got error: %s", err.Error()))
+			return
+		}
+
+		tflog.Debug(ctx, "App Installation status", map[string]any{
+			"app_installation_id": id,
+			"status":              appInstallation.Status,
+			"attempt":             i + 1,
+		})
+
+		// Transitional states, continue polling
+		time.Sleep(pollRetryInterval)
+	}
+
+	// Timeout reached
+	dg.AddError(
+		"App Installation Deletion Timeout",
+		fmt.Sprintf("App Installation %s did not reach a deleted state within 5 minutes, last status was '%s'", id, status),
 	)
 }
 
@@ -586,9 +666,7 @@ func (v confirmWaitValidator) ValidateResource(ctx context.Context, req resource
 		return
 	}
 
-	// Be defensive about unknown/null values during planning
-	if cfg.WaitForReady.IsUnknown() || cfg.WaitForReady.IsNull() ||
-		cfg.Confirm.IsUnknown() || cfg.Confirm.IsNull() {
+	if cfg.WaitForReady.IsUnknown() || cfg.Confirm.IsUnknown() {
 		return
 	}
 
