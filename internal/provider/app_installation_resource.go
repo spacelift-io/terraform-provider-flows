@@ -81,6 +81,9 @@ func (r *AppInstallationResource) Schema(ctx context.Context, req resource.Schem
 			"project_id": schema.StringAttribute{
 				Description: "ID of the project to create the app installation in.",
 				Required:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"id": schema.StringAttribute{
 				Description: "ID of the app installation.",
