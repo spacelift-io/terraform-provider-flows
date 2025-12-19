@@ -407,19 +407,19 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 		return
 	}
 
-	var defaultsChanged bool
+	var checksChanged bool
 
 	if !data.Confirm.Equal(config.Confirm) {
 		data.Confirm = config.Confirm
-		defaultsChanged = true
+		checksChanged = true
 	}
 
 	if !data.WaitForReady.Equal(config.WaitForReady) {
 		data.WaitForReady = config.WaitForReady
-		defaultsChanged = true
+		checksChanged = true
 	}
 
-	if defaultsChanged {
+	if checksChanged {
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	}
 
