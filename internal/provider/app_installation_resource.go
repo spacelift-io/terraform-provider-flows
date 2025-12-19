@@ -550,8 +550,6 @@ func (r *AppInstallationResource) Confirm(
 		dg.AddError("Client Error", fmt.Sprintf("Unable to confirm app installation %q, got error: %s", id, err.Error()))
 		return
 	}
-
-	return
 }
 
 func (r *AppInstallationResource) WaitForReady(
