@@ -464,11 +464,13 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 	}
 
 	if !data.App.Equal(config.App) {
+		custom := config.App.Attributes()["custom"].(types.Bool)
+
 		reqResp, err := CallFlowsAPI[UpdateAppInstallationVersionRequest, UpdateAppInstallationVersionResponse](*r.providerData, updateAppInstallationVersionPath, UpdateAppInstallationVersionRequest{
 			ID: data.ID.ValueString(),
 			App: AppInstallationApp{
 				VersionID: config.App.Attributes()["version_id"].(types.String).ValueString(),
-				Custom:    config.App.Attributes()["custom"].(types.Bool).ValueBool(),
+				Custom:    custom.ValueBool(),
 			},
 		})
 		if err != nil {
@@ -476,7 +478,21 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 			return
 		}
 
-		data.App = config.App
+		if custom.IsNull() {
+			custom = types.BoolValue(false)
+		}
+
+		data.App = types.ObjectValueMust(
+			map[string]attr.Type{
+				"version_id": types.StringType,
+				"custom":     types.BoolType,
+			},
+			map[string]attr.Value{
+				"version_id": config.App.Attributes()["version_id"],
+				"custom":     custom,
+			},
+		)
+
 		canConfirm = reqResp.Draft
 
 		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
