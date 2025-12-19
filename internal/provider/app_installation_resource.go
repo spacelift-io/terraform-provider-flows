@@ -618,7 +618,7 @@ func (r *AppInstallationResource) WaitForReady(
 			return
 		}
 
-		tflog.Debug(ctx, "App Installation status", map[string]any{
+		tflog.Debug(ctx, "App Installation confirmation status retry", map[string]any{
 			"app_installation_id": id,
 			"status":              appInstallation.Status,
 			"attempt":             i + 1,
@@ -696,7 +696,7 @@ func (r *AppInstallationResource) WaitForDeleted(
 			return
 		}
 
-		tflog.Debug(ctx, "App Installation status", map[string]any{
+		tflog.Debug(ctx, "App Installation deletion status retry", map[string]any{
 			"app_installation_id": id,
 			"status":              appInstallation.Status,
 			"attempt":             i + 1,
