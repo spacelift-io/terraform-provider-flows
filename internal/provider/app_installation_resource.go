@@ -408,6 +408,22 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 		return
 	}
 
+	var defaultsChanged bool
+
+	if !config.Confirm.IsNull() && !data.Confirm.Equal(config.Confirm) {
+		data.Confirm = config.Confirm
+		defaultsChanged = true
+	}
+
+	if !config.WaitForReady.IsNull() && !data.Confirm.Equal(config.Confirm) {
+		data.WaitForReady = config.WaitForReady
+		defaultsChanged = true
+	}
+
+	if defaultsChanged {
+		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	}
+
 	var canConfirm bool
 
 	if !data.Name.Equal(config.Name) || !data.StyleOverride.Equal(config.StyleOverride) {
@@ -424,9 +440,9 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 		data.Name = config.Name
 		data.StyleOverride = config.StyleOverride
 		canConfirm = reqResp.Draft
-	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	}
 
 	if !data.App.Equal(config.App) {
 		reqResp, err := CallFlowsAPI[UpdateAppInstallationVersionRequest, UpdateAppInstallationVersionResponse](*r.providerData, updateAppInstallationVersionPath, UpdateAppInstallationVersionRequest{
@@ -443,12 +459,11 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 
 		data.App = config.App
 		canConfirm = reqResp.Draft
+
+		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	}
 
-	// Save data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
-
-	if !data.ConfigFields.Equal(config.ConfigFields) {
+	if !config.ConfigFields.IsNull() && !data.ConfigFields.Equal(config.ConfigFields) {
 		reqResp, err := CallFlowsAPI[UpdateAppInstallationConfigRequest, UpdateAppInstallationConfigResponse](*r.providerData, updateAppInstallationConfigPath, UpdateAppInstallationConfigRequest{
 			ID: data.ID.ValueString(),
 			ConfigFields: func() map[string]*string {
@@ -474,13 +489,9 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 
 		data.ConfigFields = config.ConfigFields
 		canConfirm = reqResp.Draft
+
+		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 	}
-
-	data.Confirm = config.Confirm
-	data.WaitForReady = config.WaitForReady
-
-	// Save data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 
 	if canConfirm && config.Confirm.ValueBool() {
 		r.Confirm(
