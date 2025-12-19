@@ -359,7 +359,7 @@ func (r *AppInstallationResource) Read(ctx context.Context, req resource.ReadReq
 	data.ConfigFields = func() types.Map {
 		m := make(map[string]attr.Value)
 
-		// We don't care about unexpected fields.
+		// Only include fields that were originally in the plan/state.
 		for k, v := range appInstallation.ConfigFields {
 			_, ok := data.ConfigFields.Elements()[k]
 			if !ok {
@@ -497,7 +497,7 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 	if canConfirm && config.Confirm.ValueBool() {
 		ok := r.Confirm(
 			ctx,
-			data.ID.String(),
+			data.ID.ValueString(),
 			&resp.Diagnostics,
 		)
 		if !ok {
@@ -513,7 +513,7 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 
 		r.WaitForReady(
 			ctx,
-			data.ID.String(),
+			data.ID.ValueString(),
 			&resp.Diagnostics,
 		)
 	}
