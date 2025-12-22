@@ -27,6 +27,8 @@ var (
 
 const (
 	getAppInstallationPath            = "/provider/apps/get_installation"
+	getAppInstallationStatusPath      = "/provider/apps/get_installation_status"
+	getAppInstallationConfigFieldPath = "/provider/apps/get_installation_config_field"
 	createAppInstallationPath         = "/provider/apps/create_installation"
 	updateAppInstallationConfigPath   = "/provider/apps/update_installation_config"
 	updateAppInstallationMetadataPath = "/provider/apps/update_installation_metadata"
@@ -259,8 +261,9 @@ func (r *AppInstallationResource) Create(ctx context.Context, req resource.Creat
 	}
 
 	if data.Confirm.ValueBool() {
-		ok := r.Confirm(
+		ok := ConfirmAppInstallation(
 			ctx,
+			*r.providerData,
 			createAppInstallationRes.ID,
 			&resp.Diagnostics,
 		)
@@ -275,8 +278,9 @@ func (r *AppInstallationResource) Create(ctx context.Context, req resource.Creat
 			return
 		}
 
-		r.WaitForReady(
+		WaitForAppInstallationReady(
 			ctx,
+			*r.providerData,
 			createAppInstallationRes.ID,
 			&resp.Diagnostics,
 		)
@@ -495,8 +499,9 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 	}
 
 	if canConfirm && config.Confirm.ValueBool() {
-		ok := r.Confirm(
+		ok := ConfirmAppInstallation(
 			ctx,
+			*r.providerData,
 			data.ID.ValueString(),
 			&resp.Diagnostics,
 		)
@@ -511,8 +516,9 @@ func (r *AppInstallationResource) Update(ctx context.Context, req resource.Updat
 			return
 		}
 
-		r.WaitForReady(
+		WaitForAppInstallationReady(
 			ctx,
+			*r.providerData,
 			data.ID.ValueString(),
 			&resp.Diagnostics,
 		)
@@ -547,84 +553,6 @@ func (r *AppInstallationResource) Delete(ctx context.Context, req resource.Delet
 
 func (r *AppInstallationResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
-}
-
-func (r *AppInstallationResource) Confirm(
-	ctx context.Context,
-	id string,
-	dg *diag.Diagnostics,
-) bool {
-	_, err := CallFlowsAPI[ConfirmAppInstallationRequest, struct{}](*r.providerData, confirmAppInstallationPath, ConfirmAppInstallationRequest{
-		ID: id,
-	})
-	if err != nil && err.Error() != "app installation is not a draft" {
-		dg.AddError("Client Error", fmt.Sprintf("Unable to confirm app installation %q, got error: %s", id, err.Error()))
-		return false
-	}
-
-	return true
-}
-
-func (r *AppInstallationResource) WaitForReady(
-	ctx context.Context,
-	id string,
-	dg *diag.Diagnostics,
-) {
-	var status string
-
-	for i := range maxPollRetries {
-		appInstallation, err := CallFlowsAPI[GetAppInstallationRequest, GetAppInstallationResponse](
-			*r.providerData,
-			getAppInstallationPath,
-			GetAppInstallationRequest{
-				ID: id,
-			},
-		)
-		if err != nil {
-			dg.AddError("Client Error", fmt.Sprintf("Unable to read app installation, got error: %s", err.Error()))
-			return
-		}
-
-		tflog.Debug(ctx, "App Installation confirmation status retry", map[string]any{
-			"app_installation_id": id,
-			"status":              appInstallation.Status,
-			"attempt":             i + 1,
-		})
-
-		status = appInstallation.Status
-
-		switch status {
-		case "ready":
-			// Success case
-			return
-		case "failed", "drifted", "draining_failed", "draining", "drained":
-			// Terminal failure states
-			dg.AddError(
-				"App Installation Failed",
-				fmt.Sprintf(`App Installation %q reached status %q instead of "ready"`, id, status),
-			)
-
-			return
-		case "draft", "in_progress":
-			// Transitional states, continue polling
-			time.Sleep(pollRetryInterval)
-			continue
-		default:
-			// Unknown status
-			dg.AddError(
-				"Unknown App Installation Status",
-				fmt.Sprintf(`App Installation %s has unknown status %q`, id, status),
-			)
-
-			return
-		}
-	}
-
-	// Timeout reached
-	dg.AddError(
-		"App Installation Confirmation Timeout",
-		fmt.Sprintf(`App Installation %s did not reach a settled state within 5 minutes, last status was %q`, id, status),
-	)
 }
 
 func (r *AppInstallationResource) WaitForDeleted(
@@ -711,4 +639,94 @@ func (v waitForReadyValidator) ValidateResource(ctx context.Context, req resourc
 			`"wait_for_ready" can only be true when "confirm" is true.`,
 		)
 	}
+}
+
+func ConfirmAppInstallation(
+	ctx context.Context,
+	provider FlowsProviderConfiguredData,
+	id string,
+	dg *diag.Diagnostics,
+) bool {
+	_, err := CallFlowsAPI[ConfirmAppInstallationRequest, struct{}](provider, confirmAppInstallationPath, ConfirmAppInstallationRequest{
+		ID: id,
+	})
+	if err != nil && err.Error() != "app installation is not a draft" {
+		dg.AddError("Client Error", fmt.Sprintf("Unable to confirm app installation %q, got error: %s", id, err.Error()))
+		return false
+	}
+
+	return true
+}
+
+type GetAppInstallationStatusRequest struct {
+	ID string `json:"id"`
+}
+
+type GetAppInstallationStatusResponse struct {
+	Status string `json:"status"`
+}
+
+func WaitForAppInstallationReady(
+	ctx context.Context,
+	provider FlowsProviderConfiguredData,
+	id string,
+	dg *diag.Diagnostics,
+) string {
+	var status string
+
+	for i := range maxPollRetries {
+		appInstallation, err := CallFlowsAPI[GetAppInstallationStatusRequest, GetAppInstallationStatusResponse](
+			provider,
+			getAppInstallationPath,
+			GetAppInstallationStatusRequest{
+				ID: id,
+			},
+		)
+		if err != nil {
+			dg.AddError("Client Error", fmt.Sprintf("Unable to read app installation status, got error: %s", err.Error()))
+			return ""
+		}
+
+		tflog.Debug(ctx, "App Installation confirmation status retry", map[string]any{
+			"app_installation_id": id,
+			"status":              appInstallation.Status,
+			"attempt":             i + 1,
+		})
+
+		status = appInstallation.Status
+
+		switch status {
+		case "ready":
+			// Success case
+			return status
+		case "failed", "drifted", "draining_failed", "draining", "drained":
+			// Terminal failure states
+			dg.AddError(
+				"App Installation Failed",
+				fmt.Sprintf(`App Installation %q reached status %q instead of "ready"`, id, status),
+			)
+
+			return status
+		case "draft", "in_progress":
+			// Transitional states, continue polling
+			time.Sleep(pollRetryInterval)
+			continue
+		default:
+			// Unknown status
+			dg.AddError(
+				"Unknown App Installation Status",
+				fmt.Sprintf(`App Installation %s has unknown status %q`, id, status),
+			)
+
+			return status
+		}
+	}
+
+	// Timeout reached
+	dg.AddError(
+		"App Installation Confirmation Timeout",
+		fmt.Sprintf(`App Installation %s did not reach a settled state within 5 minutes, last status was %q`, id, status),
+	)
+
+	return ""
 }
