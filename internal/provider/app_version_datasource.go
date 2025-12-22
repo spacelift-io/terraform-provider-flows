@@ -73,7 +73,7 @@ func (ds *AppVersionDataSource) Schema(ctx context.Context, req datasource.Schem
 				Optional:    true,
 			},
 			"custom": schema.BoolAttribute{
-				Description: "Should specify ture if the application is custom.",
+				Description: "Should specify true if the application is custom.",
 				Optional:    true,
 			},
 		},

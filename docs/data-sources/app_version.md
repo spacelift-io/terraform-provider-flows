@@ -51,7 +51,7 @@ resource "flows_app_installation" "example" {
 
 ### Optional
 
-- `custom` (Boolean) Should specify ture if the application is custom.
+- `custom` (Boolean) Should specify true if the application is custom.
 - `registry` (String) The registry from which to install the application.
 - `version` (String) The version of the application to install. If not provided, the latest version will be used.
 
