@@ -35,11 +35,11 @@ func NewAppVersionDataSource() datasource.DataSource {
 }
 
 type AppVersionDataSourceModel struct {
-	Registry     types.String `tfsdk:"registry"`
-	AppName      types.String `tfsdk:"app_name"`
-	AppVersion   types.String `tfsdk:"app_version"`
-	Custom       types.Bool   `tfsdk:"custom"`
-	AppVersionID types.String `tfsdk:"app_version_id"`
+	ID       types.String `tfsdk:"id"`
+	Registry types.String `tfsdk:"registry"`
+	Name     types.String `tfsdk:"name"`
+	Version  types.String `tfsdk:"version"`
+	Custom   types.Bool   `tfsdk:"custom"`
 }
 
 func (ds *AppVersionDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -56,15 +56,19 @@ func (ds *AppVersionDataSource) Schema(ctx context.Context, req datasource.Schem
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Data source for retrieving the application version ID for installing applications.",
 		Attributes: map[string]schema.Attribute{
+			"id": schema.StringAttribute{
+				Description: "The computed application version ID, that can be used for installing applications.",
+				Computed:    true,
+			},
 			"registry": schema.StringAttribute{
 				Description: "The registry from which to install the application.",
 				Optional:    true,
 			},
-			"app_name": schema.StringAttribute{
+			"name": schema.StringAttribute{
 				Description: "The name of the application to install.",
 				Required:    true,
 			},
-			"app_version": schema.StringAttribute{
+			"version": schema.StringAttribute{
 				Description: "The version of the application to install. If not provided, the latest version will be used.",
 				Optional:    true,
 			},
@@ -72,19 +76,15 @@ func (ds *AppVersionDataSource) Schema(ctx context.Context, req datasource.Schem
 				Description: "Should specify ture if the application is custom.",
 				Optional:    true,
 			},
-			"app_version_id": schema.StringAttribute{
-				Description: "The computed application version ID, that can be used for installing applications.",
-				Computed:    true,
-			},
 		},
 	}
 }
 
 type GetAppVersionIDRequest struct {
-	Registry   string `json:"registry,omitempty"`
-	AppName    string `json:"app_name"`
-	AppVersion string `json:"app_version,omitempty"`
-	Custom     bool   `json:"custom,omitempty"`
+	Registry string `json:"registry,omitempty"`
+	Name     string `json:"name"`
+	Version  string `json:"version,omitempty"`
+	Custom   bool   `json:"custom,omitempty"`
 }
 
 type GetAppVersionIDResponse struct {
@@ -96,18 +96,18 @@ func (ds *AppVersionDataSource) Read(ctx context.Context, req datasource.ReadReq
 
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
 
-	appVersionID, err := CallFlowsAPI[GetAppVersionIDRequest, GetAppVersionIDResponse](*ds.providerData, getAppVersionIDPath, GetAppVersionIDRequest{
-		Registry:   data.Registry.ValueString(),
-		AppName:    data.AppName.ValueString(),
-		AppVersion: data.AppVersion.ValueString(),
-		Custom:     data.Custom.ValueBool(),
+	versionResp, err := CallFlowsAPI[GetAppVersionIDRequest, GetAppVersionIDResponse](*ds.providerData, getAppVersionIDPath, GetAppVersionIDRequest{
+		Registry: data.Registry.ValueString(),
+		Name:     data.Name.ValueString(),
+		Version:  data.Version.ValueString(),
+		Custom:   data.Custom.ValueBool(),
 	})
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", "Unable to read fetch app version id, got error: "+err.Error())
 		return
 	}
 
-	data.AppVersionID = types.StringValue(appVersionID.ID)
+	data.ID = types.StringValue(versionResp.ID)
 
 	// Write state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)

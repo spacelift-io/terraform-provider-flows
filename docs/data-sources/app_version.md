@@ -13,11 +13,11 @@ Data source for retrieving the application version ID for installing application
 ## Example Usage
 
 ```terraform
-datasource "flows_app_version" "example" {
-  registry    = "Registry Name"
-  app_name    = "My App Name"
-  app_version = "1.0.0"
-  custom      = "false"
+data "flows_app_version" "example" {
+  registry = "Registry Name"
+  name     = "My App Name"
+  version  = "1.0.0"
+  custom   = false
 }
 
 resource "flows_app_installation" "example" {
@@ -25,8 +25,8 @@ resource "flows_app_installation" "example" {
   name       = "My Custom Installation"
 
   app = {
-    version_id = datsource.flows_app_version.example.id
-    custom     = datasource.flows_app_version.example.custom
+    version_id = data.flows_app_version.example.id
+    custom     = data.flows_app_version.example.custom
   }
 
   config_fields = {
@@ -47,14 +47,14 @@ resource "flows_app_installation" "example" {
 
 ### Required
 
-- `app_name` (String) The name of the application to install.
+- `name` (String) The name of the application to install.
 
 ### Optional
 
-- `app_version` (String) The version of the application to install. If not provided, the latest version will be used.
 - `custom` (Boolean) Should specify ture if the application is custom.
 - `registry` (String) The registry from which to install the application.
+- `version` (String) The version of the application to install. If not provided, the latest version will be used.
 
 ### Read-Only
 
-- `app_version_id` (String) The computed application version ID, that can be used for installing applications.
+- `id` (String) The computed application version ID, that can be used for installing applications.
