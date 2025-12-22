@@ -84,6 +84,10 @@ func (p *FlowsProvider) Configure(ctx context.Context, req provider.ConfigureReq
 		Token:    token,
 		Endpoint: endpointParsed.String(),
 	}
+	resp.DataSourceData = &FlowsProviderConfiguredData{
+		Token:    token,
+		Endpoint: endpointParsed.String(),
+	}
 }
 
 func (p *FlowsProvider) Resources(ctx context.Context) []func() resource.Resource {
