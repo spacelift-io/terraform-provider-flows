@@ -43,7 +43,7 @@ type AppVersionDataSourceModel struct {
 }
 
 func (ds *AppVersionDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_app_version"
+	resp.TypeName = req.ProviderTypeName + "_app_version_id"
 }
 
 func (ds *AppVersionDataSource) ConfigValidators(ctx context.Context) []datasource.ConfigValidator {
@@ -54,6 +54,7 @@ func (ds *AppVersionDataSource) ConfigValidators(ctx context.Context) []datasour
 
 func (ds *AppVersionDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
+		MarkdownDescription: "Data source for retrieving the application version ID for installing applications.",
 		Attributes: map[string]schema.Attribute{
 			"registry": schema.StringAttribute{
 				Description: "The registry from which to install the application.",
@@ -115,7 +116,7 @@ func (ds *AppVersionDataSource) Read(ctx context.Context, req datasource.ReadReq
 type registryValidator struct{}
 
 func (v registryValidator) Description(ctx context.Context) string {
-	return "If wait_for_confirm is true, confirm must also be true."
+	return `If "custom" is true, "registry" cannot be specified.`
 }
 
 func (v registryValidator) MarkdownDescription(ctx context.Context) string {
@@ -136,7 +137,7 @@ func (v registryValidator) ValidateDataSource(ctx context.Context, req datasourc
 		return
 	}
 
-	if !cfg.Registry.IsUnknown() && !cfg.Registry.IsNull() && cfg.Registry.ValueString() != "" {
+	if cfg.Registry.ValueString() != "" {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("registry"),
 			"Invalid configuration",
