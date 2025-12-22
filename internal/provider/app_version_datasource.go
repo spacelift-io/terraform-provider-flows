@@ -43,7 +43,7 @@ type AppVersionDataSourceModel struct {
 }
 
 func (ds *AppVersionDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
-	resp.TypeName = req.ProviderTypeName + "_app_version_id"
+	resp.TypeName = req.ProviderTypeName + "_app_version"
 }
 
 func (ds *AppVersionDataSource) ConfigValidators(ctx context.Context) []datasource.ConfigValidator {
