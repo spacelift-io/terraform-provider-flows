@@ -5,14 +5,12 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
 var (
-	_ datasource.DataSource                     = &AppVersionDataSource{}
-	_ datasource.DataSourceWithConfigure        = &AppVersionDataSource{}
-	_ datasource.DataSourceWithConfigValidators = &AppVersionDataSource{}
+	_ datasource.DataSource              = &AppVersionDataSource{}
+	_ datasource.DataSourceWithConfigure = &AppVersionDataSource{}
 )
 
 const getAppVersionIDPath = "/provider/apps/get_version_id"
@@ -39,17 +37,10 @@ type AppVersionDataSourceModel struct {
 	Registry types.String `tfsdk:"registry"`
 	Name     types.String `tfsdk:"name"`
 	Version  types.String `tfsdk:"version"`
-	Custom   types.Bool   `tfsdk:"custom"`
 }
 
 func (ds *AppVersionDataSource) Metadata(ctx context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_app_version"
-}
-
-func (ds *AppVersionDataSource) ConfigValidators(ctx context.Context) []datasource.ConfigValidator {
-	return []datasource.ConfigValidator{
-		registryValidator{},
-	}
 }
 
 func (ds *AppVersionDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
@@ -72,10 +63,6 @@ func (ds *AppVersionDataSource) Schema(ctx context.Context, req datasource.Schem
 				Description: "The version of the application to install. If not provided, the latest version will be used.",
 				Optional:    true,
 			},
-			"custom": schema.BoolAttribute{
-				Description: "Should specify true if the application is custom.",
-				Optional:    true,
-			},
 		},
 	}
 }
@@ -84,7 +71,6 @@ type GetAppVersionIDRequest struct {
 	Registry string `json:"registry,omitempty"`
 	Name     string `json:"name"`
 	Version  string `json:"version,omitempty"`
-	Custom   bool   `json:"custom,omitempty"`
 }
 
 type GetAppVersionIDResponse struct {
@@ -100,7 +86,6 @@ func (ds *AppVersionDataSource) Read(ctx context.Context, req datasource.ReadReq
 		Registry: data.Registry.ValueString(),
 		Name:     data.Name.ValueString(),
 		Version:  data.Version.ValueString(),
-		Custom:   data.Custom.ValueBool(),
 	})
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", "Unable to read fetch app version id, got error: "+err.Error())
@@ -111,37 +96,4 @@ func (ds *AppVersionDataSource) Read(ctx context.Context, req datasource.ReadReq
 
 	// Write state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
-}
-
-type registryValidator struct{}
-
-func (v registryValidator) Description(ctx context.Context) string {
-	return `If "custom" is true, "registry" cannot be specified.`
-}
-
-func (v registryValidator) MarkdownDescription(ctx context.Context) string {
-	return v.Description(ctx)
-}
-
-func (v registryValidator) ValidateDataSource(ctx context.Context, req datasource.ValidateConfigRequest, resp *datasource.ValidateConfigResponse) {
-	var cfg AppVersionDataSourceModel
-
-	diags := req.Config.Get(ctx, &cfg)
-
-	resp.Diagnostics.Append(diags...)
-	if resp.Diagnostics.HasError() {
-		return
-	}
-
-	if !cfg.Custom.ValueBool() {
-		return
-	}
-
-	if cfg.Registry.ValueString() != "" {
-		resp.Diagnostics.AddAttributeError(
-			path.Root("registry"),
-			"Invalid configuration",
-			"`registry` can only be specified when `custom` is false.",
-		)
-	}
 }

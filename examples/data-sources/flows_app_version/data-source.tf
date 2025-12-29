@@ -2,7 +2,6 @@ data "flows_app_version" "example" {
   registry = "Registry Name"
   name     = "My App Name"
   version  = "1.0.0"
-  custom   = false
 }
 
 resource "flows_app_installation" "example" {
@@ -11,7 +10,7 @@ resource "flows_app_installation" "example" {
 
   app = {
     version_id = data.flows_app_version.example.id
-    custom     = data.flows_app_version.example.custom
+    custom     = false
   }
 
   config_fields = {
