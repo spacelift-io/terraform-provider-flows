@@ -81,6 +81,9 @@ func (ds *AppVersionDataSource) Read(ctx context.Context, req datasource.ReadReq
 	var data AppVersionDataSourceModel
 
 	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	versionResp, err := CallFlowsAPI[GetAppVersionIDRequest, GetAppVersionIDResponse](*ds.providerData, getAppVersionIDPath, GetAppVersionIDRequest{
 		Registry: data.Registry.ValueString(),
@@ -88,7 +91,7 @@ func (ds *AppVersionDataSource) Read(ctx context.Context, req datasource.ReadReq
 		Version:  data.Version.ValueString(),
 	})
 	if err != nil {
-		resp.Diagnostics.AddError("Client Error", "Unable to read fetch app version id, got error: "+err.Error())
+		resp.Diagnostics.AddError("Client Error", "Unable to fetch app version id, got error: "+err.Error())
 		return
 	}
 
