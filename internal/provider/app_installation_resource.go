@@ -671,20 +671,20 @@ func WaitForAppInstallationReady(
 	provider FlowsProviderConfiguredData,
 	id string,
 	dg *diag.Diagnostics,
-) string {
+) *string {
 	var status string
 
 	for i := range maxPollRetries {
 		appInstallation, err := CallFlowsAPI[GetAppInstallationStatusRequest, GetAppInstallationStatusResponse](
 			provider,
-			getAppInstallationPath,
+			getAppInstallationStatusPath,
 			GetAppInstallationStatusRequest{
 				ID: id,
 			},
 		)
 		if err != nil {
 			dg.AddError("Client Error", fmt.Sprintf("Unable to read app installation status, got error: %s", err.Error()))
-			return ""
+			return nil
 		}
 
 		tflog.Debug(ctx, "App Installation confirmation status retry", map[string]any{
@@ -698,7 +698,7 @@ func WaitForAppInstallationReady(
 		switch status {
 		case "ready":
 			// Success case
-			return status
+			return &status
 		case "failed", "drifted", "draining_failed", "draining", "drained":
 			// Terminal failure states
 			dg.AddError(
@@ -706,7 +706,7 @@ func WaitForAppInstallationReady(
 				fmt.Sprintf(`App Installation %q reached status %q instead of "ready"`, id, status),
 			)
 
-			return status
+			return &status
 		case "draft", "in_progress":
 			// Transitional states, continue polling
 			time.Sleep(pollRetryInterval)
@@ -718,7 +718,7 @@ func WaitForAppInstallationReady(
 				fmt.Sprintf(`App Installation %s has unknown status %q`, id, status),
 			)
 
-			return status
+			return &status
 		}
 	}
 
@@ -728,5 +728,5 @@ func WaitForAppInstallationReady(
 		fmt.Sprintf(`App Installation %s did not reach a settled state within 5 minutes, last status was %q`, id, status),
 	)
 
-	return ""
+	return nil
 }

@@ -93,7 +93,11 @@ func (r *AppInstallationConfirmationResource) Create(ctx context.Context, req re
 	}
 
 	data.Status = types.StringValue(statusResp.Status)
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	if statusResp.Status != "draft" {
 		tflog.Info(ctx, "App installation is not a draft, skipping confirmation", map[string]any{
@@ -116,8 +120,8 @@ func (r *AppInstallationConfirmationResource) Create(ctx context.Context, req re
 			appInstallationID,
 			&resp.Diagnostics,
 		)
-		if status != "" {
-			data.Status = types.StringValue(status)
+		if status != nil {
+			data.Status = types.StringValue(*status)
 			resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 		}
 	}

@@ -17,7 +17,7 @@ type AppInstallationWaitForReadyResource struct {
 	providerData *FlowsProviderConfiguredData
 }
 
-func NewAppInstallationWaitFoReadyResource() resource.Resource {
+func NewAppInstallationWaitForReadyResource() resource.Resource {
 	return &AppInstallationWaitForReadyResource{}
 }
 
@@ -77,11 +77,11 @@ func (r *AppInstallationWaitForReadyResource) Create(ctx context.Context, req re
 		appInstallationID,
 		&resp.Diagnostics,
 	)
-	if status == "" {
+	if status == nil {
 		return
 	}
 
-	data.Status = types.StringValue(status)
+	data.Status = types.StringValue(*status)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
