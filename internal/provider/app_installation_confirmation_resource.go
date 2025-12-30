@@ -110,7 +110,7 @@ func (r *AppInstallationConfirmationResource) Create(ctx context.Context, req re
 	case "in_progress":
 		// OK, we can continue
 	default:
-		resp.Diagnostics.AddWarning(
+		resp.Diagnostics.AddError(
 			"App Installation Not Confirmable",
 			fmt.Sprintf("The app installation is not in a state that can be confirmed. Current status: %q", statusResp.Status),
 		)
