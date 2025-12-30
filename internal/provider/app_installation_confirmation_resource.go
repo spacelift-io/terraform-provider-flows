@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -9,7 +10,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-log/tflog"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -99,17 +99,22 @@ func (r *AppInstallationConfirmationResource) Create(ctx context.Context, req re
 		return
 	}
 
-	if statusResp.Status != "draft" {
-		tflog.Info(ctx, "App installation is not a draft, skipping confirmation", map[string]any{
-			"app_installation_id": appInstallationID,
-			"status":              statusResp.Status,
-		})
-
+	switch statusResp.Status {
+	case "ready":
 		return
-	}
+	case "draft":
+		ok := ConfirmAppInstallation(ctx, *r.providerData, appInstallationID, &resp.Diagnostics)
+		if !ok {
+			return
+		}
+	case "in_progress":
+		// OK, we can continue
+	default:
+		resp.Diagnostics.AddWarning(
+			"App Installation Not Confirmable",
+			fmt.Sprintf("The app installation is not in a state that can be confirmed. Current status: %q", statusResp.Status),
+		)
 
-	ok := ConfirmAppInstallation(ctx, *r.providerData, appInstallationID, &resp.Diagnostics)
-	if !ok {
 		return
 	}
 
