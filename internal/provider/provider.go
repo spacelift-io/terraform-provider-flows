@@ -94,6 +94,9 @@ func (p *FlowsProvider) Resources(ctx context.Context) []func() resource.Resourc
 	return []func() resource.Resource{
 		NewFlowResource,
 		NewAppInstallationResource,
+		NewAppInstallationConfirmationResource,
+		NewAppInstallationWaitForReadyResource,
+		NewAppInstallationConfigFieldResource,
 		NewEntityConfirmationResource,
 		NewSecretResource,
 	}
