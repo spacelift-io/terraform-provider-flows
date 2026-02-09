@@ -99,6 +99,9 @@ func (p *FlowsProvider) Resources(ctx context.Context) []func() resource.Resourc
 		NewAppInstallationConfigFieldResource,
 		NewEntityConfirmationResource,
 		NewSecretResource,
+		NewDataTableResource,
+		NewDataTableAttachmentResource,
+		NewDataTableColumnResource,
 	}
 }
 
