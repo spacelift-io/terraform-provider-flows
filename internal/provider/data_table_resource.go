@@ -70,7 +70,7 @@ func (r *DataTableResource) Configure(ctx context.Context, req resource.Configur
 }
 
 type CreateDataTableRequest struct {
-	ProjectID string `json:"flowId"`
+	ProjectID string `json:"projectId"`
 	Name      string `json:"name"`
 }
 
@@ -183,8 +183,7 @@ func (r *DataTableResource) Read(ctx context.Context, req resource.ReadRequest, 
 }
 
 type DeleteDataTableRequest struct {
-	FlowID string `json:"flowId"`
-	ID     string `json:"id"`
+	ID string `json:"id"`
 }
 
 func (r *DataTableResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -196,8 +195,7 @@ func (r *DataTableResource) Delete(ctx context.Context, req resource.DeleteReque
 	}
 
 	_, err := CallFlowsAPI[DeleteDataTableRequest, struct{}](*r.providerData, "/provider/datatables/delete", DeleteDataTableRequest{
-		FlowID: state.ProjectID.ValueString(),
-		ID:     state.ID.ValueString(),
+		ID: state.ID.ValueString(),
 	})
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete data table, got error: %s", err))

@@ -89,7 +89,7 @@ func (r *DataTableAttachmentResource) Create(ctx context.Context, req resource.C
 		FlowID:      data.FlowID.ValueString(),
 	})
 	if err != nil {
-		resp.Diagnostics.AddError("Client Error", "Unable to attach data table to flow, got error: "+err.Error()+data.DataTableID.ValueString()+data.FlowID.ValueString())
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to attach data table to flow, got error: %s (data_table_id=%s, flow_id=%s)", err.Error(), data.DataTableID.ValueString(), data.FlowID.ValueString()))
 		return
 	}
 
