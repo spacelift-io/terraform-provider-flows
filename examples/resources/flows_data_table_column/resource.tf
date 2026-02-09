@@ -27,7 +27,7 @@ resource "flows_data_table_column" "float_column" {
 # Datetime column
 resource "flows_data_table_column" "date_column" {
   data_table_id = flows_data_table.example.id
-  name          = "created_at"
+  name          = "date"
   type          = "datetime"
 }
 
