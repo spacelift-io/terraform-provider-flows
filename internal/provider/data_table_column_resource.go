@@ -113,7 +113,7 @@ func (r *DataTableColumnResource) Create(ctx context.Context, req resource.Creat
 		Type:        data.Type.ValueString(),
 	}
 
-	if !data.RefTableID.IsNull() && !data.RefTableID.IsUnknown() {
+	if !data.RefTableID.IsNull() {
 		refTableID := data.RefTableID.ValueString()
 		createReq.RefTableID = &refTableID
 	}

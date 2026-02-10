@@ -36,7 +36,7 @@ func (r *DataTableResource) Metadata(ctx context.Context, req resource.MetadataR
 
 func (r *DataTableResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: `Creates and manages Data Table resource.`,
+		MarkdownDescription: `Creates and manages a Data Table resource.`,
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "ID of the data table.",
