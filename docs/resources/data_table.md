@@ -3,12 +3,12 @@
 page_title: "flows_data_table Resource - flows"
 subcategory: ""
 description: |-
-  Creates and manages Data Table resource.
+  Creates and manages a Data Table resource.
 ---
 
 # flows_data_table (Resource)
 
-Creates and manages Data Table resource.
+Creates and manages a Data Table resource.
 
 ## Example Usage
 
