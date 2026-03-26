@@ -295,8 +295,12 @@ func (r *FlowResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRe
 	}
 
 	if len(planChangesRes.Plan.Operations) == 0 {
-		// No changes, set the planned state to the current state.
-		resp.Diagnostics.Append(resp.Plan.Set(ctx, &data)...)
+		// No changes, set computed attributes from state (if available) and preserve config-sourced attributes.
+		if !data.Blocks.IsNull() && !data.Blocks.IsUnknown() {
+			resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("blocks"), data.Blocks)...)
+		}
+		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("definition"), config.Definition)...)
+		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("app_installation_mapping"), config.AppInstallationMapping)...)
 	} else {
 		// There are changes, set the planned state to the config.
 		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("definition"), config.Definition)...)
@@ -347,6 +351,7 @@ func (r *FlowResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		return
 	}
 
+	data.ProjectId = config.ProjectId
 	data.Definition = config.Definition
 	data.AppInstallationMapping = config.AppInstallationMapping
 
