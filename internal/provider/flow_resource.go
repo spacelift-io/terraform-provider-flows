@@ -295,12 +295,8 @@ func (r *FlowResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRe
 	}
 
 	if len(planChangesRes.Plan.Operations) == 0 {
-		// No changes, set computed attributes from state (if available) and preserve config-sourced attributes.
-		if !data.Blocks.IsNull() && !data.Blocks.IsUnknown() {
-			resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("blocks"), data.Blocks)...)
-		}
-		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("definition"), config.Definition)...)
-		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("app_installation_mapping"), config.AppInstallationMapping)...)
+		// No changes, set the planned state to the current state.
+		resp.Diagnostics.Append(resp.Plan.Set(ctx, &data)...)
 	} else {
 		// There are changes, set the planned state to the config.
 		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("definition"), config.Definition)...)
@@ -402,7 +398,28 @@ func (r *FlowResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 }
 
 func (r *FlowResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+	flowID := req.ID
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), flowID)...)
+
+	// Fetch flow details (name, blocks)
+	flowDetails, err := r.getFlowDetails(ctx, flowID)
+	if err != nil {
+		resp.Diagnostics.AddError("Unable to fetch flow details", err.Error())
+		return
+	}
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), flowDetails.Name)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("blocks"), flowDetails.Blocks)...)
+
+	// Export definition from backend
+	exportRes, err := CallFlowsAPI[ExportFlowDefinitionRequest, ExportFlowDefinitionResponse](*r.providerData, "/provider/flows/export_definition", ExportFlowDefinitionRequest{
+		FlowID: flowID,
+	})
+	if err != nil {
+		resp.Diagnostics.AddError("Unable to export flow definition", err.Error())
+		return
+	}
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("definition"), exportRes.Definition)...)
 }
 
 func getAppInstallationMapping(m types.Map) map[string]string {
