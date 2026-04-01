@@ -347,6 +347,7 @@ func (r *FlowResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		return
 	}
 
+	data.ProjectId = config.ProjectId
 	data.Definition = config.Definition
 	data.AppInstallationMapping = config.AppInstallationMapping
 
@@ -397,7 +398,28 @@ func (r *FlowResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 }
 
 func (r *FlowResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+	flowID := req.ID
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), flowID)...)
+
+	// Fetch flow details (name, blocks)
+	flowDetails, err := r.getFlowDetails(ctx, flowID)
+	if err != nil {
+		resp.Diagnostics.AddError("Unable to fetch flow details", err.Error())
+		return
+	}
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), flowDetails.Name)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("blocks"), flowDetails.Blocks)...)
+
+	// Export definition from backend
+	exportRes, err := CallFlowsAPI[ExportFlowDefinitionRequest, ExportFlowDefinitionResponse](*r.providerData, "/provider/flows/export_definition", ExportFlowDefinitionRequest{
+		FlowID: flowID,
+	})
+	if err != nil {
+		resp.Diagnostics.AddError("Unable to export flow definition", err.Error())
+		return
+	}
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("definition"), exportRes.Definition)...)
 }
 
 func getAppInstallationMapping(m types.Map) map[string]string {
