@@ -295,8 +295,9 @@ func (r *FlowResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRe
 	}
 
 	if len(planChangesRes.Plan.Operations) == 0 {
-		// No changes, set the planned state to the current state.
-		resp.Diagnostics.Append(resp.Plan.Set(ctx, &data)...)
+		// Only set COMPUTED attributes from state. Leave config-provided attributes alone.
+		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("blocks"), data.Blocks)...)
+		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("definition"), data.Definition)...)
 	} else {
 		// There are changes, set the planned state to the config.
 		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("definition"), config.Definition)...)
