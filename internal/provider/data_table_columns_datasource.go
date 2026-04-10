@@ -97,7 +97,7 @@ func (ds *DataTableColumnsDataSource) Read(ctx context.Context, req datasource.R
 		ReadDataTableRequest{ID: data.DataTableID.ValueString()},
 	)
 	if err != nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to list data table columns, got error: %s", err))
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to get data table with columns, got error: %s", err))
 		return
 	}
 
