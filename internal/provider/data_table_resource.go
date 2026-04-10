@@ -152,8 +152,14 @@ type ReadDataTableRequest struct {
 
 type ReadDataTableResponse struct {
 	DataTable struct {
-		ID   string `json:"id"`
-		Name string `json:"name"`
+		ID      string `json:"id"`
+		Name    string `json:"name"`
+		Columns []struct {
+			ID         string  `json:"id"`
+			Name       string  `json:"name"`
+			Type       string  `json:"type"`
+			RefTableID *string `json:"refTableId,omitempty"`
+		} `json:"columns"`
 	} `json:"dataTable"`
 }
 
