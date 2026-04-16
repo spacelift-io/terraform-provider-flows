@@ -181,10 +181,11 @@ type ReadDataTableColumnRequest struct {
 
 type ReadDataTableColumnResponse struct {
 	Column struct {
-		ID         string  `json:"id"`
-		Name       string  `json:"name"`
-		Type       string  `json:"type"`
-		RefTableID *string `json:"refTableId,omitempty"`
+		ID          string  `json:"id"`
+		Name        string  `json:"name"`
+		Type        string  `json:"type"`
+		RefTableID  *string `json:"refTableId,omitempty"`
+		DataTableID string  `json:"dataTableId"`
 	} `json:"column"`
 }
 
@@ -210,6 +211,7 @@ func (r *DataTableColumnResource) Read(ctx context.Context, req resource.ReadReq
 
 	state.Name = types.StringValue(readResp.Column.Name)
 	state.Type = types.StringValue(readResp.Column.Type)
+	state.DataTableID = types.StringValue(readResp.Column.DataTableID)
 	if readResp.Column.RefTableID != nil {
 		state.RefTableID = types.StringValue(*readResp.Column.RefTableID)
 	} else {
