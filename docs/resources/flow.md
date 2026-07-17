@@ -20,6 +20,7 @@ resource "flows_flow" "example" {
   project_id = "your-project-id"
   name       = "My Flow"
   definition = file("${path.module}/flow.yaml")
+  enabled    = true
 
   app_installation_mapping = {
     my_app = "app-installation-id"
@@ -39,6 +40,7 @@ resource "flows_flow" "example" {
 ### Optional
 
 - `app_installation_mapping` (Map of String) Mapping of app keys to app installation IDs to use when applying the flow definition. Can be used to specify installation ids when they are not provided in the yaml, or to override them.
+- `enabled` (Boolean) Whether the flow is enabled. A disabled flow does not react to events. Defaults to true.
 
 ### Read-Only
 
