@@ -9,6 +9,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -34,6 +35,7 @@ type FlowResourceModel struct {
 	Id                     types.String `tfsdk:"id"`
 	Name                   types.String `tfsdk:"name"`
 	Definition             types.String `tfsdk:"definition"`
+	Enabled                types.Bool   `tfsdk:"enabled"`
 	AppInstallationMapping types.Map    `tfsdk:"app_installation_mapping"`
 	Blocks                 types.Map    `tfsdk:"blocks"`
 }
@@ -66,6 +68,12 @@ The easiest way to get started is to select a couple blocks through the Flows UI
 			"definition": schema.StringAttribute{
 				Description: "YAML definition of the flow, easiest to obtain by copying blocks from the Flows UI.",
 				Required:    true,
+			},
+			"enabled": schema.BoolAttribute{
+				Description: "Whether the flow is enabled. A disabled flow does not react to events. Defaults to true.",
+				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(true),
 			},
 			"app_installation_mapping": schema.MapAttribute{
 				Description: "Mapping of app keys to app installation IDs to use when applying the flow definition. Can be used to specify installation ids when they are not provided in the yaml, or to override them.",
@@ -103,6 +111,12 @@ func (r *FlowResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 
+	// The enabled attribute has a default, so read its resolved value from the plan.
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("enabled"), &data.Enabled)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	createFlowRes, err := CallFlowsAPI[CreateFlowRequest, CreateFlowResponse](*r.providerData, "/provider/flows/create", CreateFlowRequest{
 		ProjectID: data.ProjectId.ValueString(),
 		Name:      data.Name.ValueString(),
@@ -125,6 +139,18 @@ func (r *FlowResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 
+	// Flows are created enabled. If a disabled flow is desired, update it.
+	if !data.Enabled.ValueBool() {
+		_, err = CallFlowsAPI[UpdateFlowRequest, struct{}](*r.providerData, "/provider/flows/update", UpdateFlowRequest{
+			ID:     createFlowRes.Flow.ID,
+			Active: data.Enabled.ValueBoolPointer(),
+		})
+		if err != nil {
+			resp.Diagnostics.AddError("Client Error", "Unable to set flow enabled state, got error: "+err.Error())
+			return
+		}
+	}
+
 	// Get the flow details including blocks
 	flowDetails, err := r.getFlowDetails(ctx, createFlowRes.Flow.ID)
 	if err != nil {
@@ -132,6 +158,7 @@ func (r *FlowResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 	data.Name = flowDetails.Name
+	data.Enabled = flowDetails.Enabled
 	data.Blocks = flowDetails.Blocks
 
 	// Save data into Terraform state
@@ -156,8 +183,9 @@ type ApplyFlowConfigRequest struct {
 }
 
 type UpdateFlowRequest struct {
-	ID   string `json:"id"`
-	Name string `json:"name"`
+	ID     string  `json:"id"`
+	Name   *string `json:"name,omitempty"`
+	Active *bool   `json:"active,omitempty"`
 }
 
 type DeleteFlowRequest struct {
@@ -170,6 +198,7 @@ type GetFlowRequest struct {
 
 type GetFlowResponse struct {
 	Name   string                  `json:"name"`
+	Active bool                    `json:"active"`
 	Blocks map[string]GetFlowBlock `json:"blocks"`
 }
 
@@ -200,6 +229,7 @@ func (r *FlowResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 	data.Name = flowDetails.Name
+	data.Enabled = flowDetails.Enabled
 	data.Blocks = flowDetails.Blocks
 
 	planResp, err := CallFlowsAPI[PlanChangesRequest, PlanChangesResponse](*r.providerData, "/provider/flows/plan_changes", PlanChangesRequest{
@@ -334,6 +364,10 @@ func (r *FlowResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	var config FlowResourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 
+	// The enabled attribute has a default, so read its resolved value from the plan.
+	var plannedEnabled types.Bool
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("enabled"), &plannedEnabled)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -352,17 +386,24 @@ func (r *FlowResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	data.Definition = config.Definition
 	data.AppInstallationMapping = config.AppInstallationMapping
 
-	// Update flow name if changed
+	// Update flow metadata (name and/or enabled state) if changed.
+	updateReq := UpdateFlowRequest{ID: data.Id.ValueString()}
+	metadataChanged := false
 	if !config.Name.Equal(data.Name) {
-		_, err = CallFlowsAPI[UpdateFlowRequest, struct{}](*r.providerData, "/provider/flows/update", UpdateFlowRequest{
-			ID:   data.Id.ValueString(),
-			Name: config.Name.ValueString(),
-		})
+		name := config.Name.ValueString()
+		updateReq.Name = &name
+		metadataChanged = true
+	}
+	if !plannedEnabled.Equal(data.Enabled) {
+		updateReq.Active = plannedEnabled.ValueBoolPointer()
+		metadataChanged = true
+	}
+	if metadataChanged {
+		_, err = CallFlowsAPI[UpdateFlowRequest, struct{}](*r.providerData, "/provider/flows/update", updateReq)
 		if err != nil {
 			resp.Diagnostics.AddError("Client Error", "Unable to update flow metadata, got error: "+err.Error())
 			return
 		}
-		data.Name = config.Name
 	}
 
 	// Get the flow details including blocks
@@ -372,6 +413,7 @@ func (r *FlowResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		return
 	}
 	data.Name = flowDetails.Name
+	data.Enabled = flowDetails.Enabled
 	data.Blocks = flowDetails.Blocks
 
 	// Save updated data into Terraform state
@@ -410,6 +452,7 @@ func (r *FlowResource) ImportState(ctx context.Context, req resource.ImportState
 		return
 	}
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), flowDetails.Name)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("enabled"), flowDetails.Enabled)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("blocks"), flowDetails.Blocks)...)
 
 	// Export definition from backend
@@ -438,8 +481,9 @@ func getAppInstallationMapping(m types.Map) map[string]string {
 }
 
 type flowDetailsResult struct {
-	Name   types.String
-	Blocks types.Map
+	Name    types.String
+	Enabled types.Bool
+	Blocks  types.Map
 }
 
 func (r *FlowResource) getFlowDetails(ctx context.Context, flowID string) (*flowDetailsResult, error) {
@@ -473,7 +517,8 @@ func (r *FlowResource) getFlowDetails(ctx context.Context, flowID string) (*flow
 	blocks, _ := types.MapValue(blockElementType, blockElements)
 
 	return &flowDetailsResult{
-		Name:   types.StringValue(getFlowResp.Name),
-		Blocks: blocks,
+		Name:    types.StringValue(getFlowResp.Name),
+		Enabled: types.BoolValue(getFlowResp.Active),
+		Blocks:  blocks,
 	}, nil
 }
