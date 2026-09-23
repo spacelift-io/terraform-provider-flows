@@ -368,6 +368,11 @@ func (r *FlowResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	var plannedEnabled types.Bool
 	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("enabled"), &plannedEnabled)...)
 
+	// ModifyPlan keeps the prior definition when the config is semantically equivalent,
+	// so the planned value must be stored in state rather than the config value.
+	var plannedDefinition types.String
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("definition"), &plannedDefinition)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -383,7 +388,7 @@ func (r *FlowResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	}
 
 	data.ProjectId = config.ProjectId
-	data.Definition = config.Definition
+	data.Definition = plannedDefinition
 	data.AppInstallationMapping = config.AppInstallationMapping
 
 	// Update flow metadata (name and/or enabled state) if changed.
