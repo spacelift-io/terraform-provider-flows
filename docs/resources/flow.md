@@ -17,10 +17,11 @@ The easiest way to get started is to select a couple blocks through the Flows UI
 
 ```terraform
 resource "flows_flow" "example" {
-  project_id = "your-project-id"
-  name       = "My Flow"
-  definition = file("${path.module}/flow.yaml")
-  enabled    = true
+  project_id  = "your-project-id"
+  name        = "My Flow"
+  definition  = file("${path.module}/flow.yaml")
+  enabled     = true
+  event_limit = 10000
 
   app_installation_mapping = {
     my_app = "app-installation-id"
@@ -41,6 +42,7 @@ resource "flows_flow" "example" {
 
 - `app_installation_mapping` (Map of String) Mapping of app keys to app installation IDs to use when applying the flow definition. Can be used to specify installation ids when they are not provided in the yaml, or to override them.
 - `enabled` (Boolean) Whether the flow is enabled. A disabled flow does not react to events. Defaults to true.
+- `event_limit` (Number) Monthly event limit override for the flow. When not set, the flow runs with the default limit.
 
 ### Read-Only
 

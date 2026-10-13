@@ -36,6 +36,7 @@ type FlowResourceModel struct {
 	Name                   types.String `tfsdk:"name"`
 	Definition             types.String `tfsdk:"definition"`
 	Enabled                types.Bool   `tfsdk:"enabled"`
+	EventLimit             types.Int64  `tfsdk:"event_limit"`
 	AppInstallationMapping types.Map    `tfsdk:"app_installation_mapping"`
 	Blocks                 types.Map    `tfsdk:"blocks"`
 }
@@ -74,6 +75,10 @@ The easiest way to get started is to select a couple blocks through the Flows UI
 				Optional:    true,
 				Computed:    true,
 				Default:     booldefault.StaticBool(true),
+			},
+			"event_limit": schema.Int64Attribute{
+				Description: "Monthly event limit override for the flow. When not set, the flow runs with the default limit.",
+				Optional:    true,
 			},
 			"app_installation_mapping": schema.MapAttribute{
 				Description: "Mapping of app keys to app installation IDs to use when applying the flow definition. Can be used to specify installation ids when they are not provided in the yaml, or to override them.",
@@ -118,8 +123,9 @@ func (r *FlowResource) Create(ctx context.Context, req resource.CreateRequest, r
 	}
 
 	createFlowRes, err := CallFlowsAPI[CreateFlowRequest, CreateFlowResponse](*r.providerData, "/provider/flows/create", CreateFlowRequest{
-		ProjectID: data.ProjectId.ValueString(),
-		Name:      data.Name.ValueString(),
+		ProjectID:  data.ProjectId.ValueString(),
+		Name:       data.Name.ValueString(),
+		EventLimit: data.EventLimit.ValueInt64Pointer(),
 	})
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", "Unable to create flow, got error: "+err.Error())
@@ -160,14 +166,16 @@ func (r *FlowResource) Create(ctx context.Context, req resource.CreateRequest, r
 	data.Name = flowDetails.Name
 	data.Enabled = flowDetails.Enabled
 	data.Blocks = flowDetails.Blocks
+	data.EventLimit = flowDetails.EventLimit
 
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 type CreateFlowRequest struct {
-	ProjectID string `json:"projectId"`
-	Name      string `json:"name"`
+	ProjectID  string `json:"projectId"`
+	Name       string `json:"name"`
+	EventLimit *int64 `json:"eventLimit,omitempty"`
 }
 
 type CreateFlowResponse struct {
@@ -186,6 +194,8 @@ type UpdateFlowRequest struct {
 	ID     string  `json:"id"`
 	Name   *string `json:"name,omitempty"`
 	Active *bool   `json:"active,omitempty"`
+	// EventLimit is omitted when the outer pointer is nil; a nil inner pointer is sent as null, removing the override.
+	EventLimit **int64 `json:"eventLimit,omitempty"`
 }
 
 type DeleteFlowRequest struct {
@@ -197,9 +207,10 @@ type GetFlowRequest struct {
 }
 
 type GetFlowResponse struct {
-	Name   string                  `json:"name"`
-	Active bool                    `json:"active"`
-	Blocks map[string]GetFlowBlock `json:"blocks"`
+	Name       string                  `json:"name"`
+	Active     bool                    `json:"active"`
+	EventLimit *int64                  `json:"eventLimit"`
+	Blocks     map[string]GetFlowBlock `json:"blocks"`
 }
 
 type GetFlowBlock struct {
@@ -231,6 +242,7 @@ func (r *FlowResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 	data.Name = flowDetails.Name
 	data.Enabled = flowDetails.Enabled
 	data.Blocks = flowDetails.Blocks
+	data.EventLimit = flowDetails.EventLimit
 
 	planResp, err := CallFlowsAPI[PlanChangesRequest, PlanChangesResponse](*r.providerData, "/provider/flows/plan_changes", PlanChangesRequest{
 		FlowID:                 data.Id.ValueString(),
@@ -391,7 +403,7 @@ func (r *FlowResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	data.Definition = plannedDefinition
 	data.AppInstallationMapping = config.AppInstallationMapping
 
-	// Update flow metadata (name and/or enabled state) if changed.
+	// Update flow metadata (name, enabled state and/or event limit) if changed.
 	updateReq := UpdateFlowRequest{ID: data.Id.ValueString()}
 	metadataChanged := false
 	if !config.Name.Equal(data.Name) {
@@ -401,6 +413,11 @@ func (r *FlowResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	}
 	if !plannedEnabled.Equal(data.Enabled) {
 		updateReq.Active = plannedEnabled.ValueBoolPointer()
+		metadataChanged = true
+	}
+	if !config.EventLimit.Equal(data.EventLimit) {
+		eventLimit := config.EventLimit.ValueInt64Pointer()
+		updateReq.EventLimit = &eventLimit
 		metadataChanged = true
 	}
 	if metadataChanged {
@@ -419,6 +436,7 @@ func (r *FlowResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	}
 	data.Name = flowDetails.Name
 	data.Enabled = flowDetails.Enabled
+	data.EventLimit = flowDetails.EventLimit
 	data.Blocks = flowDetails.Blocks
 
 	// Save updated data into Terraform state
@@ -458,6 +476,7 @@ func (r *FlowResource) ImportState(ctx context.Context, req resource.ImportState
 	}
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), flowDetails.Name)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("enabled"), flowDetails.Enabled)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("event_limit"), flowDetails.EventLimit)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("blocks"), flowDetails.Blocks)...)
 
 	// Export definition from backend
@@ -486,9 +505,10 @@ func getAppInstallationMapping(m types.Map) map[string]string {
 }
 
 type flowDetailsResult struct {
-	Name    types.String
-	Enabled types.Bool
-	Blocks  types.Map
+	Name       types.String
+	Enabled    types.Bool
+	EventLimit types.Int64
+	Blocks     types.Map
 }
 
 func (r *FlowResource) getFlowDetails(ctx context.Context, flowID string) (*flowDetailsResult, error) {
@@ -522,8 +542,9 @@ func (r *FlowResource) getFlowDetails(ctx context.Context, flowID string) (*flow
 	blocks, _ := types.MapValue(blockElementType, blockElements)
 
 	return &flowDetailsResult{
-		Name:    types.StringValue(getFlowResp.Name),
-		Enabled: types.BoolValue(getFlowResp.Active),
-		Blocks:  blocks,
+		Name:       types.StringValue(getFlowResp.Name),
+		Enabled:    types.BoolValue(getFlowResp.Active),
+		EventLimit: types.Int64PointerValue(getFlowResp.EventLimit),
+		Blocks:     blocks,
 	}, nil
 }
