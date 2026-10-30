@@ -3,16 +3,12 @@ data "flows_projects" "all" {}
 
 # Only users' personal sandbox projects.
 data "flows_projects" "sandboxes" {
-  personal_sandbox {
-    equals = true
-  }
+  personal_sandbox = true
 }
 
 # Projects with one of the given names.
 data "flows_projects" "selected" {
-  name {
-    any_of = ["Platform", "Security"]
-  }
+  names = ["Platform", "Security"]
 }
 
 # The `ids` attribute is a set, so it can be used directly with for_each.

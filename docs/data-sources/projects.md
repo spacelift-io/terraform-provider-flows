@@ -3,12 +3,12 @@
 page_title: "flows_projects Data Source - flows"
 subcategory: ""
 description: |-
-  Data source for listing the projects the authentication token has at least viewer access to, optionally narrowed down by predicates. All given predicates must match. Projects are returned sorted by name. The ids attribute is a set of project IDs, so it can be used directly with for_each. When no project matches, the result is empty rather than an error.
+  Data source for listing the projects the authentication token has at least viewer access to, optionally filtered by name and personal-sandbox status. All given filters must match. Projects are returned sorted by name. The ids attribute is a set of project IDs, so it can be used directly with for_each. When no project matches, the result is empty rather than an error.
 ---
 
 # flows_projects (Data Source)
 
-Data source for listing the projects the authentication token has at least viewer access to, optionally narrowed down by predicates. All given predicates must match. Projects are returned sorted by name. The `ids` attribute is a set of project IDs, so it can be used directly with `for_each`. When no project matches, the result is empty rather than an error.
+Data source for listing the projects the authentication token has at least viewer access to, optionally filtered by name and personal-sandbox status. All given filters must match. Projects are returned sorted by name. The `ids` attribute is a set of project IDs, so it can be used directly with `for_each`. When no project matches, the result is empty rather than an error.
 
 ## Example Usage
 
@@ -18,16 +18,12 @@ data "flows_projects" "all" {}
 
 # Only users' personal sandbox projects.
 data "flows_projects" "sandboxes" {
-  personal_sandbox {
-    equals = true
-  }
+  personal_sandbox = true
 }
 
 # Projects with one of the given names.
 data "flows_projects" "selected" {
-  name {
-    any_of = ["Platform", "Security"]
-  }
+  names = ["Platform", "Security"]
 }
 
 # The `ids` attribute is a set, so it can be used directly with for_each.
@@ -49,29 +45,13 @@ output "sandbox_project_names" {
 
 ### Optional
 
-- `name` (Block, Optional) Require projects to have one of the names. (see [below for nested schema](#nestedblock--name))
-- `personal_sandbox` (Block, Optional) Require projects to be users' personal sandboxes or not. (see [below for nested schema](#nestedblock--personal_sandbox))
+- `names` (Set of String) Only include projects with one of these names (case-insensitive). Must not be empty when set.
+- `personal_sandbox` (Boolean) Only include projects that are (true) or are not (false) users' automatically created personal sandboxes.
 
 ### Read-Only
 
-- `ids` (Set of String) Set of the IDs of the projects matching the predicates.
-- `projects` (Attributes List) List of the projects matching the predicates, sorted by name. (see [below for nested schema](#nestedatt--projects))
-
-<a id="nestedblock--name"></a>
-### Nested Schema for `name`
-
-Required:
-
-- `any_of` (List of String) Project names to match (case-insensitive). At least one is required.
-
-
-<a id="nestedblock--personal_sandbox"></a>
-### Nested Schema for `personal_sandbox`
-
-Optional:
-
-- `equals` (Boolean) Whether the project must be a personal sandbox. Defaults to true.
-
+- `ids` (Set of String) Set of the IDs of the matching projects.
+- `projects` (Attributes List) List of the matching projects, sorted by name. (see [below for nested schema](#nestedatt--projects))
 
 <a id="nestedatt--projects"></a>
 ### Nested Schema for `projects`
