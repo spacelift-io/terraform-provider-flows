@@ -64,7 +64,7 @@ func (ds *ProjectDataSource) Metadata(ctx context.Context, req datasource.Metada
 
 func (ds *ProjectDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Data source for looking up a single project by name or ID, so that project IDs don't have to be hard-coded in configuration. " +
+		MarkdownDescription: "Data source for looking up a single project by name or ID. " +
 			"Exactly one of `id` or `name` must be set. The lookup fails if no project matches. " +
 			"Project names are unique within an organization (ignoring case), so a name always resolves to at most one project. " +
 			"Only projects the authentication token has at least viewer access to can be looked up.",

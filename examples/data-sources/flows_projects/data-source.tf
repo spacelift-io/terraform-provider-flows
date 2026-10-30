@@ -3,12 +3,16 @@ data "flows_projects" "all" {}
 
 # Only users' personal sandbox projects.
 data "flows_projects" "sandboxes" {
-  is_personal_sandbox = true
+  personal_sandbox {
+    equals = true
+  }
 }
 
-# Projects whose name matches a pattern.
-data "flows_projects" "staging" {
-  name_regex = "^staging-"
+# Projects with one of the given names.
+data "flows_projects" "selected" {
+  name {
+    any_of = ["Platform", "Security"]
+  }
 }
 
 # The `ids` attribute is a set, so it can be used directly with for_each.

@@ -3,12 +3,12 @@
 page_title: "flows_project Data Source - flows"
 subcategory: ""
 description: |-
-  Data source for looking up a single project by name or ID, so that project IDs don't have to be hard-coded in configuration. Exactly one of id or name must be set. The lookup fails if no project matches. Project names are unique within an organization (ignoring case), so a name always resolves to at most one project. Only projects the authentication token has at least viewer access to can be looked up.
+  Data source for looking up a single project by name or ID. Exactly one of id or name must be set. The lookup fails if no project matches. Project names are unique within an organization (ignoring case), so a name always resolves to at most one project. Only projects the authentication token has at least viewer access to can be looked up.
 ---
 
 # flows_project (Data Source)
 
-Data source for looking up a single project by name or ID, so that project IDs don't have to be hard-coded in configuration. Exactly one of `id` or `name` must be set. The lookup fails if no project matches. Project names are unique within an organization (ignoring case), so a name always resolves to at most one project. Only projects the authentication token has at least viewer access to can be looked up.
+Data source for looking up a single project by name or ID. Exactly one of `id` or `name` must be set. The lookup fails if no project matches. Project names are unique within an organization (ignoring case), so a name always resolves to at most one project. Only projects the authentication token has at least viewer access to can be looked up.
 
 ## Example Usage
 

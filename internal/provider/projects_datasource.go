@@ -2,7 +2,7 @@ package provider
 
 import (
 	"context"
-	"regexp"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
@@ -27,10 +27,24 @@ type ProjectsDataSource struct {
 }
 
 type ProjectsDataSourceModel struct {
-	NameRegex         types.String   `tfsdk:"name_regex"`
-	IsPersonalSandbox types.Bool     `tfsdk:"is_personal_sandbox"`
-	IDs               types.Set      `tfsdk:"ids"`
-	Projects          []ProjectModel `tfsdk:"projects"`
+	Name            *StringPredicateModel `tfsdk:"name"`
+	PersonalSandbox *BoolPredicateModel   `tfsdk:"personal_sandbox"`
+	IDs             types.Set             `tfsdk:"ids"`
+	Projects        []ProjectModel        `tfsdk:"projects"`
+}
+
+// StringPredicateModel requires a string field to equal one of the given values.
+type StringPredicateModel struct {
+	AnyOf types.List `tfsdk:"any_of"`
+}
+
+// BoolPredicateModel requires a boolean field to equal the given value (true when unset).
+type BoolPredicateModel struct {
+	Equals types.Bool `tfsdk:"equals"`
+}
+
+func (p *BoolPredicateModel) value() bool {
+	return p.Equals.IsNull() || p.Equals.ValueBool()
 }
 
 type ListProjectsRequest struct{}
@@ -45,25 +59,18 @@ func (ds *ProjectsDataSource) Metadata(ctx context.Context, req datasource.Metad
 
 func (ds *ProjectsDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Data source for listing the projects the authentication token has at least viewer access to, optionally filtered by name pattern and personal-sandbox status. " +
-			"Projects are returned sorted by name. The `ids` attribute is a set of project IDs, so it can be used directly with `for_each`. " +
-			"When no project matches the filters, the result is empty rather than an error.",
+		MarkdownDescription: "Data source for listing the projects the authentication token has at least viewer access to, optionally narrowed down by predicates. " +
+			"All given predicates must match. Projects are returned sorted by name. " +
+			"The `ids` attribute is a set of project IDs, so it can be used directly with `for_each`. " +
+			"When no project matches, the result is empty rather than an error.",
 		Attributes: map[string]schema.Attribute{
-			"name_regex": schema.StringAttribute{
-				Description: "Only include projects whose name matches this regular expression (RE2 syntax, case-sensitive unless the pattern says otherwise, e.g. `(?i)sandbox`).",
-				Optional:    true,
-			},
-			"is_personal_sandbox": schema.BoolAttribute{
-				Description: "Only include projects that are (true) or are not (false) users' automatically created personal sandboxes.",
-				Optional:    true,
-			},
 			"ids": schema.SetAttribute{
-				Description: "Set of the IDs of the matching projects.",
+				Description: "Set of the IDs of the projects matching the predicates.",
 				Computed:    true,
 				ElementType: types.StringType,
 			},
 			"projects": schema.ListNestedAttribute{
-				Description: "List of the matching projects, sorted by name.",
+				Description: "List of the projects matching the predicates, sorted by name.",
 				Computed:    true,
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
@@ -79,6 +86,27 @@ func (ds *ProjectsDataSource) Schema(ctx context.Context, req datasource.SchemaR
 							Description: "Whether the project is a user's automatically created personal sandbox.",
 							Computed:    true,
 						},
+					},
+				},
+			},
+		},
+		Blocks: map[string]schema.Block{
+			"name": schema.SingleNestedBlock{
+				Description: "Require projects to have one of the names.",
+				Attributes: map[string]schema.Attribute{
+					"any_of": schema.ListAttribute{
+						Description: "Project names to match (case-insensitive). At least one is required.",
+						Required:    true,
+						ElementType: types.StringType,
+					},
+				},
+			},
+			"personal_sandbox": schema.SingleNestedBlock{
+				Description: "Require projects to be users' personal sandboxes or not.",
+				Attributes: map[string]schema.Attribute{
+					"equals": schema.BoolAttribute{
+						Description: "Whether the project must be a personal sandbox. Defaults to true.",
+						Optional:    true,
 					},
 				},
 			},
@@ -103,12 +131,12 @@ func (ds *ProjectsDataSource) ValidateConfig(ctx context.Context, req datasource
 		return
 	}
 
-	if data.NameRegex.IsNull() || data.NameRegex.IsUnknown() {
+	if data.Name == nil || data.Name.AnyOf.IsNull() || data.Name.AnyOf.IsUnknown() {
 		return
 	}
 
-	if _, err := regexp.Compile(data.NameRegex.ValueString()); err != nil {
-		resp.Diagnostics.AddAttributeError(path.Root("name_regex"), "Invalid name_regex", "The name_regex attribute must be a valid regular expression: "+err.Error())
+	if len(data.Name.AnyOf.Elements()) == 0 {
+		resp.Diagnostics.AddAttributeError(path.Root("name").AtName("any_of"), "Empty name predicate", "The name predicate must list at least one project name.")
 	}
 }
 
@@ -120,12 +148,14 @@ func (ds *ProjectsDataSource) Read(ctx context.Context, req datasource.ReadReque
 		return
 	}
 
-	var nameRegex *regexp.Regexp
-	if !data.NameRegex.IsNull() {
-		var err error
-		nameRegex, err = regexp.Compile(data.NameRegex.ValueString())
-		if err != nil {
-			resp.Diagnostics.AddAttributeError(path.Root("name_regex"), "Invalid name_regex", "The name_regex attribute must be a valid regular expression: "+err.Error())
+	var names []string
+	if data.Name != nil {
+		resp.Diagnostics.Append(data.Name.AnyOf.ElementsAs(ctx, &names, false)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		if len(names) == 0 {
+			resp.Diagnostics.AddAttributeError(path.Root("name").AtName("any_of"), "Empty name predicate", "The name predicate must list at least one project name.")
 			return
 		}
 	}
@@ -136,14 +166,14 @@ func (ds *ProjectsDataSource) Read(ctx context.Context, req datasource.ReadReque
 		return
 	}
 
-	// The API returns every project visible to the token; filtering happens here.
+	// The API returns every project visible to the token; predicates are applied here.
 	ids := make([]string, 0, len(listResp.Projects))
 	projects := make([]ProjectModel, 0, len(listResp.Projects))
 	for _, project := range listResp.Projects {
-		if nameRegex != nil && !nameRegex.MatchString(project.Name) {
+		if data.Name != nil && !matchesAnyName(project.Name, names) {
 			continue
 		}
-		if !data.IsPersonalSandbox.IsNull() && project.IsPersonalSandbox != data.IsPersonalSandbox.ValueBool() {
+		if data.PersonalSandbox != nil && project.IsPersonalSandbox != data.PersonalSandbox.value() {
 			continue
 		}
 		ids = append(ids, project.ID)
@@ -160,4 +190,15 @@ func (ds *ProjectsDataSource) Read(ctx context.Context, req datasource.ReadReque
 	data.Projects = projects
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+// matchesAnyName reports whether name equals one of the candidates, ignoring
+// case, which mirrors how project names are kept unique within an organization.
+func matchesAnyName(name string, candidates []string) bool {
+	for _, candidate := range candidates {
+		if strings.EqualFold(name, candidate) {
+			return true
+		}
+	}
+	return false
 }
