@@ -109,6 +109,8 @@ func (p *FlowsProvider) DataSources(ctx context.Context) []func() datasource.Dat
 	return []func() datasource.DataSource{
 		NewAppVersionDataSource,
 		NewDataTableColumnsDataSource,
+		NewProjectDataSource,
+		NewProjectsDataSource,
 	}
 }
 
