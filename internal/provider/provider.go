@@ -102,6 +102,7 @@ func (p *FlowsProvider) Resources(ctx context.Context) []func() resource.Resourc
 		NewDataTableResource,
 		NewDataTableAttachmentResource,
 		NewDataTableColumnResource,
+		NewProjectAgentPoolAttachmentResource,
 	}
 }
 
